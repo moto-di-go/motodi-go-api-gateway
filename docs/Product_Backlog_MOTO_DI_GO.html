@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOTO'DI GO - Product Backlog</title>
+    <style>
+        :root {
+            --primary: #0f766e;
+            --primary-dark: #115e59;
+            --secondary: #1f2937;
+            --accent: #f59e0b;
+            --danger: #b91c1c;
+            --warning: #b45309;
+            --success: #15803d;
+            --info: #2563eb;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --muted: #64748b;
+            --line: #d8dee6;
+            --soft: #ecfdf5;
+            --soft-blue: #eff6ff;
+            --soft-amber: #fffbeb;
+            --soft-red: #fef2f2;
+            --text: #111827;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            line-height: 1.55;
+            font-size: 14px;
+        }
+
+        .container {
+            max-width: 1900px;
+            margin: 0 auto;
+            padding: 32px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        }
+
+        header {
+            padding-bottom: 22px;
+            margin-bottom: 28px;
+            border-bottom: 3px solid var(--primary);
+            text-align: center;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            margin-top: 0;
+            color: var(--secondary);
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: var(--primary-dark);
+            font-size: 2.25rem;
+            letter-spacing: 0;
+        }
+
+        h2 {
+            margin: 34px 0 16px;
+            font-size: 1.45rem;
+            border-left: 5px solid var(--primary);
+            padding-left: 12px;
+        }
+
+        h3 {
+            margin-bottom: 10px;
+            font-size: 1.05rem;
+        }
+
+        p {
+            margin: 8px 0;
+        }
+
+        .subtitle {
+            margin: 0;
+            color: var(--muted);
+            font-size: 1.05rem;
+        }
+
+        .meta {
+            margin-top: 10px;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        .card {
+            padding: 18px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        .card strong {
+            color: var(--secondary);
+        }
+
+        .vision-card {
+            border-top: 4px solid var(--primary);
+        }
+
+        .epic-card {
+            min-height: 132px;
+        }
+
+        .epic-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            margin-right: 8px;
+            border-radius: 50%;
+            color: #ffffff;
+            background: var(--primary);
+            font-weight: 700;
+        }
+
+        .rules {
+            background: var(--soft-blue);
+            border-color: #bfdbfe;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 18px 0 28px;
+            border: 1px solid var(--line);
+            background: var(--surface);
+        }
+
+        th,
+        td {
+            padding: 12px 10px;
+            border: 1px solid var(--line);
+            vertical-align: top;
+            text-align: left;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            color: #ffffff;
+            background: var(--primary-dark);
+            font-weight: 650;
+        }
+
+        tbody tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        tbody tr:hover {
+            background: var(--soft);
+        }
+
+        .id {
+            font-family: Consolas, "Courier New", monospace;
+            color: var(--primary-dark);
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            margin: 2px 2px 2px 0;
+            border-radius: 999px;
+            color: #ffffff;
+            font-size: 0.77rem;
+            font-weight: 700;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+
+        .badge-epic {
+            background: var(--info);
+        }
+
+        .badge-release {
+            background: #7c3aed;
+        }
+
+        .badge-high {
+            background: var(--danger);
+        }
+
+        .badge-medium {
+            background: var(--warning);
+        }
+
+        .badge-low {
+            background: var(--success);
+        }
+
+        .points {
+            text-align: center;
+            color: var(--primary-dark);
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+
+        .criteria {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .criteria li {
+            margin: 4px 0;
+        }
+
+        .dependency {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .summary-card {
+            background: #fbfdff;
+        }
+
+        .roadmap {
+            margin-top: 18px;
+        }
+
+        .timeline {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(260px, 1fr));
+            gap: 14px;
+            margin: 18px 0 28px;
+        }
+
+        .sprint {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            overflow: hidden;
+        }
+
+        .sprint h3 {
+            margin: 0;
+            padding: 12px;
+            color: #ffffff;
+            background: var(--secondary);
+            font-size: 1rem;
+        }
+
+        .sprint .content {
+            padding: 14px;
+        }
+
+        .sprint .date {
+            display: block;
+            color: var(--muted);
+            margin-bottom: 8px;
+            font-weight: 650;
+        }
+
+        .ordered-list {
+            margin: 8px 0 0;
+            padding-left: 18px;
+        }
+
+        .ordered-list li {
+            margin: 8px 0;
+        }
+
+        .flow {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 10px;
+            margin: 18px 0;
+        }
+
+        .flow-step {
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-left: 5px solid var(--accent);
+            border-radius: 6px;
+            background: var(--soft-amber);
+            font-weight: 650;
+        }
+
+        footer {
+            margin-top: 34px;
+            padding-top: 22px;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            text-align: center;
+        }
+
+        @media (max-width: 1100px) {
+            body {
+                padding: 12px;
+            }
+
+            .container {
+                padding: 18px;
+            }
+
+            .timeline {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: normal;
+            }
+
+            th,
+            td {
+                min-width: 145px;
+            }
+        }
+    </style>
+</head>
+<body>
+<main class="container">
+    <header>
+        <h1>MOTO'DI GO</h1>
+        <p class="subtitle">Product Backlog - Plateforme intégrée de transport urbain et covoiturage</p>
+        <p class="meta">Version 1.0 - Source : Cahier des charges MOTO'DI GO du 29 juin 2026</p>
+    </header>
+
+    <section class="section">
+        <h2>Vision du produit</h2>
+        <p>
+            MOTO'DI GO est une plateforme MaaS dédiée au Cameroun. Elle met en relation les passagers,
+            les conducteurs de mototaxis, les transporteurs interurbains et les administrateurs afin de
+            standardiser les prix, sécuriser les trajets, améliorer la visibilité des offres de transport
+            et fournir une information géospatiale fiable.
+        </p>
+
+        <div class="grid">
+            <div class="card vision-card">
+                <h3>Objectif principal</h3>
+                <p>Créer une solution numérique globale standardisant les tarifs, sécurisant les trajets et fluidifiant l'information entre transporteurs et usagers.</p>
+            </div>
+            <div class="card vision-card">
+                <h3>Utilisateurs cibles</h3>
+                <p>Passagers urbains, voyageurs interurbains, touristes, conducteurs de mototaxis, agences ou transporteurs interurbains, administrateurs plateforme.</p>
+            </div>
+            <div class="card vision-card">
+                <h3>Contraintes clés</h3>
+                <p>Géolocalisation précise, paiement Mobile Money, mode hors-ligne, NFC, chiffrement AES-256 des données sensibles et API performante.</p>
+            </div>
+            <div class="card vision-card">
+                <h3>Stack cible</h3>
+                <p>Flutter, Spring Boot, Spring Cloud API Gateway, PostgreSQL/PostGIS, FastAPI pour l'agent IA, Next.js pour le back-office, Docker et GitHub Actions.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>Epics principaux</h2>
+        <div class="grid">
+            <div class="card epic-card">
+                <h3><span class="epic-number">1</span>Socle technique & API</h3>
+                <p>Architecture, base de données, API Gateway, CI/CD, sécurité de transport et observabilité.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">2</span>Identité & profils</h3>
+                <p>Inscription, connexion, gestion multi-profils, rôles passager, mototaxi, transporteur et agence.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">3</span>Conformité & sécurité</h3>
+                <p>Contrôle des documents officiels, données biométriques, validation administrative et audit.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">4</span>SIG & tarification</h3>
+                <p>Carte urbaine, suivi GPS, trafic temps réel, itinéraires alternatifs et calcul standardisé des prix.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">5</span>Transport interurbain</h3>
+                <p>Annonces, recherche multicritère, souscription aux trajets et assistant IA de covoiturage.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">6</span>Wallet & paiements</h3>
+                <p>Portefeuille électronique, Mobile Money, paiement de trajet, NFC et transactions hors connexion.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">7</span>Réservation & suivi</h3>
+                <p>Blocage de place, notifications push, suivi d'embarquement et statut des courses en temps réel.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">8</span>Résilience hors-ligne</h3>
+                <p>Cartes téléchargeables, cache local, synchronisation différée et mini-jeu mobile.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">9</span>Expérience post-trajet</h3>
+                <p>Notation, commentaires, historique complet des trajets et contact support.</p>
+            </div>
+            <div class="card epic-card">
+                <h3><span class="epic-number">10</span>Back-office & analytics</h3>
+                <p>Administration web, modération, suivi des opérations, indicateurs produit et indicateurs techniques.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>Règles de lecture du backlog</h2>
+        <div class="grid">
+            <div class="card rules">
+                <h3>Priorités</h3>
+                <p><strong>HIGH</strong> : indispensable au MVP ou à la sécurité. <strong>MEDIUM</strong> : important pour la V1 stabilisée. <strong>LOW</strong> : amélioration ou différenciation après stabilisation.</p>
+            </div>
+            <div class="card rules">
+                <h3>Estimations</h3>
+                <p>Les story points mesurent l'effort relatif. Les stories au-dessus de 13 SP devront être affinées avant sprint planning.</p>
+            </div>
+            <div class="card rules">
+                <h3>Dépendances</h3>
+                <p>Une user story dépendante doit être planifiée après les stories listées dans sa colonne dépendances, sauf découpage technique complémentaire.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>Product Backlog détaillé</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Epic</th>
+                <th>User Story</th>
+                <th>Description fonctionnelle</th>
+                <th>Critères d'acceptation</th>
+                <th>Priorité</th>
+                <th>SP</th>
+                <th>Release</th>
+                <th>Dépendances</th>
+                <th>Tests et notes techniques</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td class="id">MGO-001</td>
+                <td><span class="badge badge-epic">Socle technique</span></td>
+                <td>En tant qu'équipe technique, je veux initialiser les dépôts, les environnements Docker et la CI/CD afin de démarrer le développement sur une base stable.</td>
+                <td>Mise en place des repositories mobile, backend, IA et back-office, avec environnements local, staging et production.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Dépôts versionnés avec branches protégées.</li>
+                        <li>Docker Compose lance API, base PostgreSQL/PostGIS et services utiles.</li>
+                        <li>Pipeline GitHub Actions exécute build et tests.</li>
+                        <li>Variables d'environnement documentées.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">Aucune</td>
+                <td>Tests de build, healthchecks Docker, contrôle des secrets.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-002</td>
+                <td><span class="badge badge-epic">Socle technique</span></td>
+                <td>En tant que développeur backend, je veux modéliser les données métier et géospatiales afin de supporter les profils, trajets, documents, annonces et paiements.</td>
+                <td>Schéma PostgreSQL/PostGIS couvrant utilisateurs, rôles, documents, véhicules, trajets, annonces, réservations, wallet et positions GPS.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Tables principales créées avec contraintes et index.</li>
+                        <li>Colonnes géographiques PostGIS disponibles pour positions et itinéraires.</li>
+                        <li>Migrations rejouables sans perte de données.</li>
+                        <li>Modèle documenté pour les équipes mobile et web.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-001</td>
+                <td>Tests de migrations, index spatiaux, contraintes d'intégrité.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-003</td>
+                <td><span class="badge badge-epic">Socle technique</span></td>
+                <td>En tant que client mobile ou web, je veux accéder à une API sécurisée et documentée afin d'utiliser les services MOTO'DI GO de façon fiable.</td>
+                <td>API Gateway Spring Cloud, services Spring Boot, documentation OpenAPI et authentification JWT.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Endpoints versionnés sous /api/v1.</li>
+                        <li>Documentation Swagger disponible en environnement de test.</li>
+                        <li>JWT requis sur les endpoints privés.</li>
+                        <li>Temps de réponse cible inférieur à 200 ms sur les endpoints courants.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-001, MGO-002</td>
+                <td>Tests API, rate limiting, TLS 1.3 en production.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-004</td>
+                <td><span class="badge badge-epic">Identité</span></td>
+                <td>En tant que nouvel utilisateur, je veux créer un compte afin d'accéder aux services de transport de la plateforme.</td>
+                <td>Inscription avec téléphone, mot de passe, informations de base et acceptation des conditions d'utilisation.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Numéro de téléphone camerounais validé.</li>
+                        <li>Compte créé après vérification OTP.</li>
+                        <li>Message clair si le numéro existe déjà.</li>
+                        <li>Redirection vers la sélection du profil.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-003</td>
+                <td>Tests OTP, doublons, validation formulaire, sécurité mot de passe.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-005</td>
+                <td><span class="badge badge-epic">Identité</span></td>
+                <td>En tant qu'utilisateur existant, je veux me connecter et récupérer mon accès afin de poursuivre mes trajets et réservations.</td>
+                <td>Connexion sécurisée, renouvellement de session, déconnexion et réinitialisation du mot de passe.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Connexion possible avec identifiants valides.</li>
+                        <li>Session expirée automatiquement selon la politique de sécurité.</li>
+                        <li>Mot de passe réinitialisable via OTP.</li>
+                        <li>Journalisation des tentatives suspectes.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">5</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-004</td>
+                <td>Tests connexion, expiration JWT, brute force, réinitialisation.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-006</td>
+                <td><span class="badge badge-epic">Identité</span></td>
+                <td>En tant qu'utilisateur, je veux choisir et gérer mon profil passager, mototaxi, transporteur ou agence afin d'utiliser les fonctionnalités adaptées à mon rôle.</td>
+                <td>Gestion multi-profils avec permissions, bascule de rôle et informations spécifiques à chaque type d'utilisateur.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Un utilisateur peut sélectionner un ou plusieurs profils compatibles.</li>
+                        <li>Les écrans affichent uniquement les actions autorisées.</li>
+                        <li>Les informations spécifiques au profil sont sauvegardées.</li>
+                        <li>Le statut de validation du profil est visible.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-004, MGO-005</td>
+                <td>Tests RBAC, navigation mobile, règles par profil.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-007</td>
+                <td><span class="badge badge-epic">Conformité</span></td>
+                <td>En tant que conducteur ou transporteur, je veux téléverser mes documents officiels afin de faire valider ma fiabilité.</td>
+                <td>Collecte de CNI, permis, carte grise, assurance, photo de profil et pièces propres au véhicule ou à l'agence.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Types de documents exigés selon le profil.</li>
+                        <li>Formats image et PDF contrôlés.</li>
+                        <li>Statut de chaque document affiché.</li>
+                        <li>Notification en cas de document incomplet ou illisible.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-006</td>
+                <td>Tests upload, taille maximale, antivirus, stockage objet.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-008</td>
+                <td><span class="badge badge-epic">Conformité</span></td>
+                <td>En tant qu'utilisateur, je veux que mes documents et données biométriques soient chiffrés afin de protéger ma confidentialité.</td>
+                <td>Chiffrement AES-256 au repos, HTTPS/TLS en transit, séparation logique des données sensibles et traçabilité d'accès.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Données sensibles chiffrées avant stockage.</li>
+                        <li>Clés gérées hors du code source.</li>
+                        <li>Accès aux documents limité aux rôles autorisés.</li>
+                        <li>Audit des consultations administratives disponible.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-007</td>
+                <td>Tests chiffrement, rotation de clés, contrôle d'accès.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-009</td>
+                <td><span class="badge badge-epic">Back-office</span></td>
+                <td>En tant qu'administrateur, je veux valider ou rejeter les profils transporteurs afin d'empêcher les acteurs non conformes d'opérer.</td>
+                <td>File de modération des documents, décision motivée, historique et changement de statut du profil.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Liste des dossiers en attente accessible au back-office.</li>
+                        <li>Validation ou rejet avec motif obligatoire.</li>
+                        <li>Utilisateur notifié après décision.</li>
+                        <li>Historique des décisions conservé.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-007, MGO-008</td>
+                <td>Tests workflow admin, audit, permissions Next.js.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-010</td>
+                <td><span class="badge badge-epic">SIG</span></td>
+                <td>En tant que passager, je veux voir une carte urbaine et ma position afin de comprendre les options de transport autour de moi.</td>
+                <td>Intégration Flutter d'une carte Mapbox ou OpenStreetMap avec géolocalisation utilisateur et couches cartographiques de base.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Carte chargée sur Android et iOS.</li>
+                        <li>Position utilisateur affichée après consentement.</li>
+                        <li>Gestion claire du refus de permission GPS.</li>
+                        <li>Zoom et déplacement fluides.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-002, MGO-003</td>
+                <td>Tests mobile GPS, précision, performance rendu carte.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-011</td>
+                <td><span class="badge badge-epic">SIG</span></td>
+                <td>En tant que conducteur validé, je veux transmettre ma position en temps réel afin d'être visible pour les passagers et le système de suivi.</td>
+                <td>Collecte GPS toutes les 5 secondes, envoi optimisé au backend et stockage géospatial.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Position envoyée uniquement après consentement et profil validé.</li>
+                        <li>Fréquence cible de 5 secondes configurable.</li>
+                        <li>Dernière position consultable par les services autorisés.</li>
+                        <li>Consommation batterie surveillée.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-006, MGO-009, MGO-010</td>
+                <td>Tests GPS, charge API, files d'événements, index PostGIS.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-012</td>
+                <td><span class="badge badge-epic">Tarification</span></td>
+                <td>En tant que passager, je veux sélectionner un itinéraire pour connaître le coût standardisé du trajet avant de m'engager.</td>
+                <td>Calcul du prix selon distance, zone, créneau jour/nuit, météo ou règle tarifaire paramétrée par l'administration.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Origine et destination sélectionnables sur carte.</li>
+                        <li>Distance et durée estimée calculées.</li>
+                        <li>Prix affiché avant réservation.</li>
+                        <li>Règles de tarification traçables et paramétrables.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-010, MGO-011</td>
+                <td>Tests PostGIS, calcul distance, scénarios jour/nuit, arrondis.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-013</td>
+                <td><span class="badge badge-epic">SIG</span></td>
+                <td>En tant qu'usager, je veux voir le trafic routier et les voies alternatives afin d'éviter les routes impraticables ou saturées.</td>
+                <td>Affichage des axes congestionnés, routes en travaux, routes dégradées et propositions d'itinéraires de délestage.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Couches trafic visibles sur la carte.</li>
+                        <li>Signalements ou données admin pris en compte.</li>
+                        <li>Itinéraire alternatif proposé si la route principale est bloquée.</li>
+                        <li>Données synchronisées au retour de connexion.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-010, MGO-011, MGO-012</td>
+                <td>Tests couches SIG, recalcul itinéraire, performance carte.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-014</td>
+                <td><span class="badge badge-epic">Transport urbain</span></td>
+                <td>En tant que passager urbain, je veux rechercher un mototaxi disponible et comparer le prix estimé afin de choisir rapidement un trajet.</td>
+                <td>Recherche de conducteurs proches, disponibilité, distance d'approche et prix standardisé du trajet.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Conducteurs proches listés avec distance d'approche.</li>
+                        <li>Seuls les profils validés sont proposés.</li>
+                        <li>Prix estimé cohérent avec MGO-012.</li>
+                        <li>Etat disponible ou occupé visible.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-011, MGO-012</td>
+                <td>Tests recherche spatiale, disponibilité, filtrage sécurité.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-015</td>
+                <td><span class="badge badge-epic">Interurbain</span></td>
+                <td>En tant que transporteur interurbain, je veux publier une annonce de trajet afin de rendre visibles mes horaires, mon tarif et mes places disponibles.</td>
+                <td>Publication d'un trajet avec ville de départ, destination, date, heure, point de départ, prix, nombre de places, véhicule et consignes.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Annonce créée uniquement par un profil validé.</li>
+                        <li>Champs obligatoires contrôlés.</li>
+                        <li>Places disponibles initialisées correctement.</li>
+                        <li>Annonce modifiable tant qu'aucune contrainte métier ne l'interdit.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-006, MGO-009</td>
+                <td>Tests CRUD annonces, règles horaires, permissions.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-016</td>
+                <td><span class="badge badge-epic">Interurbain</span></td>
+                <td>En tant que voyageur, je veux rechercher et filtrer les annonces interurbaines afin de trouver un trajet selon mon budget, mon horaire et mon quartier.</td>
+                <td>Recherche multicritère par ville, date, prix, horaire, quartier de départ, disponibilité et transporteur.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Résultats triables par prix, horaire et proximité.</li>
+                        <li>Filtres cumulables.</li>
+                        <li>Places restantes affichées.</li>
+                        <li>Aucun résultat expliqué avec options d'élargissement.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-015</td>
+                <td>Tests recherche, pagination, performance requêtes.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-017</td>
+                <td><span class="badge badge-epic">Interurbain</span></td>
+                <td>En tant que voyageur, je veux souscrire à une annonce afin de manifester mon intention de rejoindre le trajet.</td>
+                <td>Demande de participation à un trajet interurbain avec statut en attente, confirmé ou annulé.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Souscription impossible si le trajet est complet.</li>
+                        <li>Statut de la demande visible par voyageur et transporteur.</li>
+                        <li>Décompte des places mis à jour de façon transactionnelle.</li>
+                        <li>Annulation possible selon les règles définies.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-016</td>
+                <td>Tests concurrence places, annulation, états de réservation.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-018</td>
+                <td><span class="badge badge-epic">Agent IA</span></td>
+                <td>En tant que voyageur, je veux être assisté par un agent IA de covoiturage afin d'identifier les trajets ou regroupements les plus pertinents.</td>
+                <td>Microservice FastAPI proposant des recommandations selon ville, quartier, horaire, places disponibles, historique et contraintes du voyageur.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Suggestions affichées depuis les données d'annonces existantes.</li>
+                        <li>Explication courte de la recommandation.</li>
+                        <li>Fallback si le service IA est indisponible.</li>
+                        <li>Mesure du taux d'utilisation de l'assistant.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-015, MGO-016, MGO-017</td>
+                <td>Tests API IA, pertinence, latence, logs anonymisés.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-019</td>
+                <td><span class="badge badge-epic">Wallet</span></td>
+                <td>En tant qu'utilisateur, je veux disposer d'un portefeuille électronique afin de gérer mes fonds de transport dans l'application.</td>
+                <td>Création automatique du wallet, solde, devise FCFA, historique de mouvements et règles de sécurité.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Wallet créé à l'activation du compte.</li>
+                        <li>Solde consultable en temps réel.</li>
+                        <li>Mouvements horodatés et traçables.</li>
+                        <li>Accès protégé par authentification.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-003, MGO-004</td>
+                <td>Tests ledger, intégrité comptable, concurrence.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-020</td>
+                <td><span class="badge badge-epic">Wallet</span></td>
+                <td>En tant qu'utilisateur, je veux alimenter mon wallet via MTN MoMo, Orange Money ou un agrégateur afin de payer mes trajets sans espèces.</td>
+                <td>Intégration des APIs de paiement, callback de confirmation, statut de transaction et gestion des échecs.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Demande de dépôt initiée depuis l'application.</li>
+                        <li>Callback valide crédite le wallet une seule fois.</li>
+                        <li>Echec ou expiration affiché à l'utilisateur.</li>
+                        <li>Transactions réconciliables côté administration.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-019</td>
+                <td>Tests sandbox Mobile Money, idempotence, webhooks signés.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-021</td>
+                <td><span class="badge badge-epic">Wallet</span></td>
+                <td>En tant que passager, je veux payer un trajet via mon wallet afin de sécuriser la transaction avec le conducteur ou le transporteur.</td>
+                <td>Paiement d'un trajet urbain ou interurbain, débit passager, crédit transporteur selon règles de règlement.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Paiement refusé si solde insuffisant.</li>
+                        <li>Transaction atomique entre passager et transporteur.</li>
+                        <li>Reçu disponible dans l'application.</li>
+                        <li>Statut de réservation mis à jour après paiement.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-012, MGO-017, MGO-020</td>
+                <td>Tests débit/crédit, solde insuffisant, reçu, rollback.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-022</td>
+                <td><span class="badge badge-epic">Wallet</span></td>
+                <td>En tant qu'utilisateur, je veux payer sans connexion via NFC afin de finaliser un trajet même en cas d'instabilité réseau.</td>
+                <td>Emission de jetons de paiement hors-ligne, échange NFC et validation différée lors du retour de connectivité.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Jeton NFC signé et limité dans le temps.</li>
+                        <li>Transaction visible comme "en attente de synchronisation".</li>
+                        <li>Double dépense empêchée par identifiant unique.</li>
+                        <li>Validation serveur effectuée au retour du réseau.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-019, MGO-021</td>
+                <td>Tests NFC Android, cryptographie, synchronisation différée.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-023</td>
+                <td><span class="badge badge-epic">Réservation</span></td>
+                <td>En tant que voyageur, je veux bloquer ma place en temps réel afin d'éviter de perdre mon trajet après confirmation.</td>
+                <td>Réservation instantanée, verrouillage de place, confirmation, annulation et expiration automatique.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Place bloquée dès confirmation métier ou paiement requis.</li>
+                        <li>Expiration automatique si le paiement ou la confirmation n'aboutit pas.</li>
+                        <li>Transporteur voit le nombre de passagers confirmés.</li>
+                        <li>Passager voit son statut à tout moment.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-017, MGO-021</td>
+                <td>Tests locks, expiration, concurrence, statuts.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-024</td>
+                <td><span class="badge badge-epic">Réservation</span></td>
+                <td>En tant que transporteur, je veux recevoir une notification lorsqu'un passager rejoint mon trajet afin d'organiser mon départ.</td>
+                <td>Notifications push pour souscription, confirmation, annulation, départ imminent et changement de statut.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Notification envoyée au transporteur après nouvelle confirmation.</li>
+                        <li>Passager notifié lors d'un changement de statut.</li>
+                        <li>Préférences de notification configurables.</li>
+                        <li>Historique minimal des notifications consultable.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">5</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-017, MGO-023</td>
+                <td>Tests push FCM/APNs, retries, préférences.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-025</td>
+                <td><span class="badge badge-epic">Réservation</span></td>
+                <td>En tant que passager, je veux suivre le statut de mon trajet afin de savoir si le conducteur est en approche, en cours ou arrivé.</td>
+                <td>Statuts de course, suivi temps réel, événements d'embarquement et arrivée.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Statuts standardisés : confirmé, en approche, à bord, terminé, annulé.</li>
+                        <li>Position conducteur visible lorsque le trajet est actif.</li>
+                        <li>Fin de trajet déclenche paiement final ou reçu.</li>
+                        <li>Evénements horodatés pour l'historique.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-011, MGO-023, MGO-024</td>
+                <td>Tests temps réel, WebSocket ou polling, cohérence des états.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-026</td>
+                <td><span class="badge badge-epic">Hors-ligne</span></td>
+                <td>En tant qu'utilisateur, je veux télécharger des cartes et conserver certaines données en cache afin d'utiliser l'application avec une connexion limitée.</td>
+                <td>Cartes locales, cache des trajets utiles, état de connectivité et stratégie de lecture hors connexion.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Zones de carte téléchargeables avant déplacement.</li>
+                        <li>Données essentielles disponibles hors connexion.</li>
+                        <li>Indicateur de mode hors-ligne visible.</li>
+                        <li>Cache nettoyable depuis les paramètres.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-010, MGO-013</td>
+                <td>Tests cache, stockage local, cartes, reprise réseau.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-027</td>
+                <td><span class="badge badge-epic">Hors-ligne</span></td>
+                <td>En tant qu'utilisateur, je veux synchroniser mes actions hors connexion afin que réservations et paiements soient régularisés quand le réseau revient.</td>
+                <td>File locale d'opérations, résolution de conflits, resynchronisation automatique et journal d'erreurs.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Actions hors-ligne empilées localement.</li>
+                        <li>Synchronisation automatique au retour de connexion.</li>
+                        <li>Conflits expliqués à l'utilisateur.</li>
+                        <li>Back-office capable d'auditer les opérations différées.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-022, MGO-026</td>
+                <td>Tests files locales, idempotence, conflits, reprise réseau.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-028</td>
+                <td><span class="badge badge-epic">Hors-ligne</span></td>
+                <td>En tant qu'utilisateur, je veux accéder à un mini-jeu hors-ligne afin de conserver une expérience utile lorsque les services réseau sont indisponibles.</td>
+                <td>Petit module ludique embarqué dans l'application, sans dépendance serveur critique.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Mini-jeu disponible depuis le mode hors-ligne.</li>
+                        <li>Aucune donnée sensible requise.</li>
+                        <li>Temps de chargement court.</li>
+                        <li>Désactivation possible sans affecter le transport.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-low">LOW</span></td>
+                <td class="points">5</td>
+                <td><span class="badge badge-release">V1.2</span></td>
+                <td class="dependency">MGO-026</td>
+                <td>Tests mobile, poids de l'application, fonctionnement offline.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-029</td>
+                <td><span class="badge badge-epic">Post-trajet</span></td>
+                <td>En tant que passager ou transporteur, je veux noter et commenter l'autre partie après un trajet afin d'améliorer la confiance sur la plateforme.</td>
+                <td>Notation réciproque, commentaires modérables, score agrégé visible sur les profils.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Notation possible uniquement après un trajet terminé.</li>
+                        <li>Score moyen recalculé automatiquement.</li>
+                        <li>Commentaire signalable ou modérable.</li>
+                        <li>Règles anti-abus appliquées.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">5</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-025</td>
+                <td>Tests post-trajet, modération, score, abus.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-030</td>
+                <td><span class="badge badge-epic">Post-trajet</span></td>
+                <td>En tant qu'utilisateur, je veux consulter l'historique de mes trajets passés et planifiés afin de suivre mes déplacements et mes dépenses.</td>
+                <td>Liste des trajets, filtres par date et statut, détail du trajet, reçu et statut de paiement.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Trajets passés et à venir séparés.</li>
+                        <li>Détail accessible depuis chaque ligne.</li>
+                        <li>Reçus et montants associés visibles.</li>
+                        <li>Recherche par période disponible.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">5</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-017, MGO-021, MGO-025</td>
+                <td>Tests filtres, pagination, cohérence paiement/trajet.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-031</td>
+                <td><span class="badge badge-epic">Support</span></td>
+                <td>En tant qu'utilisateur, je veux contacter l'équipe support afin de signaler un problème, une urgence ou une question.</td>
+                <td>Page de contact, formulaire de ticket, catégorie, priorité et suivi minimal de la demande.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Formulaire accessible depuis l'application.</li>
+                        <li>Catégories transport, paiement, compte et sécurité disponibles.</li>
+                        <li>Ticket transmis au support.</li>
+                        <li>Accusé de réception affiché à l'utilisateur.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">3</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-004</td>
+                <td>Tests formulaire, spam, notification support.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-032</td>
+                <td><span class="badge badge-epic">Back-office</span></td>
+                <td>En tant qu'administrateur ou agence, je veux piloter les utilisateurs, annonces, paiements et cartes depuis un tableau de bord web afin d'exploiter la plateforme.</td>
+                <td>Dashboard Next.js pour gérer profils, documents, annonces, transactions, signalements, règles tarifaires et couches SIG.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Connexion admin sécurisée.</li>
+                        <li>Vue des utilisateurs et profils par statut.</li>
+                        <li>Gestion des annonces et signalements.</li>
+                        <li>Consultation des transactions et règles tarifaires.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-009, MGO-015, MGO-020, MGO-025</td>
+                <td>Tests RBAC admin, audit, rendu cartes lourdes, sécurité.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-033</td>
+                <td><span class="badge badge-epic">Analytics</span></td>
+                <td>En tant que décideur, je veux consulter les KPI produit et techniques afin d'évaluer l'adoption, la congestion et la fiabilité du service.</td>
+                <td>Tableaux de bord pour utilisateurs actifs, taux d'utilisation IA, disponibilité serveur, temps de synchronisation SIG et indicateurs d'embouteillage.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>KPIs produit affichés par période.</li>
+                        <li>KPIs techniques disponibles pour l'équipe plateforme.</li>
+                        <li>Export CSV des indicateurs principaux.</li>
+                        <li>Données agrégées sans exposer les informations sensibles.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-medium">MEDIUM</span></td>
+                <td class="points">8</td>
+                <td><span class="badge badge-release">V1.1</span></td>
+                <td class="dependency">MGO-013, MGO-018, MGO-025, MGO-032</td>
+                <td>Tests calculs KPI, anonymisation, exports, SLA 99,9%.</td>
+            </tr>
+            <tr>
+                <td class="id">MGO-034</td>
+                <td><span class="badge badge-epic">Déploiement</span></td>
+                <td>En tant qu'équipe produit, je veux valider et déployer la solution afin de rendre le MVP utilisable en production.</td>
+                <td>Tests QA, tests d'intégration paiement, tests de charge géospatiaux, corrections finales et déploiement automatisé sur VPS Ubuntu.</td>
+                <td>
+                    <ul class="criteria">
+                        <li>Campagne QA exécutée sur mobile et web.</li>
+                        <li>Tests de charge réalisés sur requêtes géospatiales.</li>
+                        <li>Tests d'intégration Mobile Money validés.</li>
+                        <li>Déploiement production automatisé et documenté.</li>
+                    </ul>
+                </td>
+                <td><span class="badge badge-high">HIGH</span></td>
+                <td class="points">13</td>
+                <td><span class="badge badge-release">MVP</span></td>
+                <td class="dependency">MGO-001 à MGO-033 selon périmètre livré</td>
+                <td>Tests unitaires, intégration, charge, sécurité, plan de rollback.</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="section">
+        <h2>Synthèse du backlog</h2>
+        <div class="grid">
+            <div class="card summary-card">
+                <h3>Volume global</h3>
+                <p><strong>34 user stories</strong></p>
+                <p><strong>307 story points</strong> estimés.</p>
+            </div>
+            <div class="card summary-card">
+                <h3>Répartition par priorité</h3>
+                <p>HIGH : 24 items - socle MVP, sécurité, parcours transport et back-office essentiel.</p>
+                <p>MEDIUM : 9 items - IA, trafic avancé, offline complet, analytics et expérience post-trajet.</p>
+                <p>LOW : 1 item - mini-jeu hors-ligne.</p>
+            </div>
+            <div class="card summary-card">
+                <h3>Modules critiques</h3>
+                <p>Identité, contrôle documentaire, SIG, tarification, annonces interurbaines, réservation, wallet et administration.</p>
+            </div>
+            <div class="card summary-card">
+                <h3>Risques couverts</h3>
+                <p>Instabilité réseau via mode hors-ligne et NFC, confiance via KYC, tarification opaque via calcul standardisé, asymétrie d'information via annonces et notifications.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section roadmap">
+        <h2>Roadmap détaillée et dépendances d'implémentation</h2>
+        <p>
+            La roadmap reprend la durée du cahier des charges : 4 sprints de 2 semaines, du 29 juin au
+            24 août 2026. L'ordre ci-dessous respecte la chaîne de dépendance entre modules : on construit
+            d'abord le socle technique et l'identité, puis les capacités SIG, ensuite les parcours de transport,
+            puis le paiement et la résilience, avant les modules de finition et la mise en production.
+        </p>
+
+        <div class="flow">
+            <div class="flow-step">1. Socle technique<br><span class="dependency">MGO-001 à MGO-003</span></div>
+            <div class="flow-step">2. Identité & KYC<br><span class="dependency">MGO-004 à MGO-009</span></div>
+            <div class="flow-step">3. SIG & tarification<br><span class="dependency">MGO-010 à MGO-014</span></div>
+            <div class="flow-step">4. Annonces & réservation<br><span class="dependency">MGO-015 à MGO-018</span></div>
+            <div class="flow-step">5. Wallet & NFC<br><span class="dependency">MGO-019 à MGO-022</span></div>
+            <div class="flow-step">6. Suivi & notifications<br><span class="dependency">MGO-023 à MGO-025</span></div>
+            <div class="flow-step">7. Hors-ligne & post-trajet<br><span class="dependency">MGO-026 à MGO-031</span></div>
+            <div class="flow-step">8. Admin, KPI & production<br><span class="dependency">MGO-032 à MGO-034</span></div>
+        </div>
+
+        <div class="timeline">
+            <div class="sprint">
+                <h3>Sprint 1 - Fondations, profils et sécurité</h3>
+                <div class="content">
+                    <span class="date">29 juin - 12 juillet 2026</span>
+                    <p><strong>Objectif :</strong> disposer d'une plateforme techniquement prête, avec comptes, rôles et contrôle documentaire.</p>
+                    <ol class="ordered-list">
+                        <li><strong>MGO-001</strong> : initialiser dépôts, Docker et CI/CD.</li>
+                        <li><strong>MGO-002</strong> : créer le modèle PostgreSQL/PostGIS.</li>
+                        <li><strong>MGO-003</strong> : exposer l'API Gateway sécurisée.</li>
+                        <li><strong>MGO-004</strong> : créer les comptes utilisateurs.</li>
+                        <li><strong>MGO-005</strong> : connecter et gérer les sessions.</li>
+                        <li><strong>MGO-006</strong> : activer les profils passager, mototaxi, transporteur et agence.</li>
+                        <li><strong>MGO-007</strong> : téléverser les documents officiels.</li>
+                        <li><strong>MGO-008</strong> : chiffrer les pièces et données biométriques.</li>
+                        <li><strong>MGO-009</strong> : valider les profils côté administration.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="sprint">
+                <h3>Sprint 2 - SIG, trajets et covoiturage</h3>
+                <div class="content">
+                    <span class="date">13 juillet - 26 juillet 2026</span>
+                    <p><strong>Objectif :</strong> rendre possible la recherche de transport grâce à la carte, la tarification et les annonces.</p>
+                    <ol class="ordered-list" start="10">
+                        <li><strong>MGO-010</strong> : intégrer la carte mobile.</li>
+                        <li><strong>MGO-011</strong> : remonter la position GPS des conducteurs validés.</li>
+                        <li><strong>MGO-012</strong> : calculer itinéraire, distance et prix standardisé.</li>
+                        <li><strong>MGO-013</strong> : afficher trafic et routes alternatives.</li>
+                        <li><strong>MGO-014</strong> : rechercher un mototaxi urbain.</li>
+                        <li><strong>MGO-015</strong> : publier une annonce interurbaine.</li>
+                        <li><strong>MGO-016</strong> : rechercher et filtrer les annonces.</li>
+                        <li><strong>MGO-017</strong> : souscrire à une annonce.</li>
+                        <li><strong>MGO-018</strong> : proposer l'assistant IA de covoiturage.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="sprint">
+                <h3>Sprint 3 - Paiement, réservation et résilience réseau</h3>
+                <div class="content">
+                    <span class="date">27 juillet - 9 août 2026</span>
+                    <p><strong>Objectif :</strong> sécuriser la transaction, bloquer les places et maintenir l'usage malgré les coupures réseau.</p>
+                    <ol class="ordered-list" start="19">
+                        <li><strong>MGO-019</strong> : créer le wallet utilisateur.</li>
+                        <li><strong>MGO-020</strong> : intégrer MTN MoMo, Orange Money ou agrégateur.</li>
+                        <li><strong>MGO-021</strong> : payer un trajet via wallet.</li>
+                        <li><strong>MGO-022</strong> : préparer le paiement NFC hors-ligne.</li>
+                        <li><strong>MGO-023</strong> : bloquer la place en temps réel.</li>
+                        <li><strong>MGO-024</strong> : notifier passagers et transporteurs.</li>
+                        <li><strong>MGO-025</strong> : suivre la course et l'embarquement.</li>
+                        <li><strong>MGO-026</strong> : télécharger les cartes et données en cache.</li>
+                        <li><strong>MGO-027</strong> : synchroniser les actions hors connexion.</li>
+                        <li><strong>MGO-028</strong> : livrer le mini-jeu hors-ligne si le périmètre le permet.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="sprint">
+                <h3>Sprint 4 - Finitions, administration et déploiement</h3>
+                <div class="content">
+                    <span class="date">10 août - 24 août 2026</span>
+                    <p><strong>Objectif :</strong> compléter l'expérience, stabiliser l'exploitation et mettre le MVP en production.</p>
+                    <ol class="ordered-list" start="29">
+                        <li><strong>MGO-029</strong> : noter et commenter après trajet.</li>
+                        <li><strong>MGO-030</strong> : consulter l'historique des trajets.</li>
+                        <li><strong>MGO-031</strong> : contacter le support.</li>
+                        <li><strong>MGO-032</strong> : finaliser le dashboard admin et agence.</li>
+                        <li><strong>MGO-033</strong> : afficher les KPI produit et techniques.</li>
+                        <li><strong>MGO-034</strong> : exécuter QA, tests de charge, tests paiement et déploiement production.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+            <tr>
+                <th>Ordre</th>
+                <th>User story</th>
+                <th>Module livré</th>
+                <th>Dépendances directes</th>
+                <th>Pourquoi cet ordre est nécessaire</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>1</td>
+                <td class="id">MGO-001 à MGO-003</td>
+                <td>Socle technique, base PostGIS, API sécurisée</td>
+                <td>Aucune</td>
+                <td>Tout le reste dépend des environnements, du modèle de données et des endpoints communs.</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td class="id">MGO-004 à MGO-006</td>
+                <td>Comptes et profils</td>
+                <td>MGO-003</td>
+                <td>Les trajets, paiements, annonces et validations doivent être rattachés à un utilisateur et à un rôle.</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td class="id">MGO-007 à MGO-009</td>
+                <td>KYC, chiffrement et validation admin</td>
+                <td>MGO-006</td>
+                <td>Les conducteurs et transporteurs ne doivent apparaître dans les services qu'après validation documentaire.</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td class="id">MGO-010 à MGO-014</td>
+                <td>Carte, GPS, prix et recherche urbaine</td>
+                <td>MGO-002, MGO-003, MGO-009</td>
+                <td>La géolocalisation et la tarification sont nécessaires avant la réservation et le paiement d'un trajet.</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td class="id">MGO-015 à MGO-018</td>
+                <td>Annonces interurbaines et IA</td>
+                <td>MGO-006, MGO-009, MGO-016</td>
+                <td>Les recommandations IA n'ont de valeur qu'après création d'un volume minimal d'annonces et de souscriptions.</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td class="id">MGO-019 à MGO-022</td>
+                <td>Wallet, Mobile Money et NFC</td>
+                <td>MGO-004, MGO-012, MGO-017</td>
+                <td>Le paiement requiert un compte, un prix calculé et un trajet ou une réservation existante.</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td class="id">MGO-023 à MGO-025</td>
+                <td>Réservation, notifications et suivi</td>
+                <td>MGO-017, MGO-021, MGO-011</td>
+                <td>Le blocage de place et le suivi temps réel doivent s'appuyer sur réservation, paiement et positions GPS.</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td class="id">MGO-026 à MGO-031</td>
+                <td>Hors-ligne, post-trajet, historique et support</td>
+                <td>MGO-010, MGO-022, MGO-025</td>
+                <td>Les fonctions hors-ligne et post-trajet complètent des parcours déjà fonctionnels.</td>
+            </tr>
+            <tr>
+                <td>9</td>
+                <td class="id">MGO-032 à MGO-034</td>
+                <td>Administration complète, KPI, QA et production</td>
+                <td>MGO-009, MGO-020, MGO-025, MGO-033</td>
+                <td>Le tableau de bord et les KPI consolident les données issues des modules métier avant la validation finale.</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <footer>
+        <p><strong>Product Backlog MOTO'DI GO - Version 1.0</strong></p>
+        <p>Document HTML généré à partir du cahier des charges et structuré selon une approche Agile/Scrum.</p>
+    </footer>
+</main>
+</body>
+</html>
