@@ -1,0 +1,56 @@
+# GATE-PLAT-001 - Route Conventions
+
+## Public API Prefix
+
+All public REST endpoints exposed by the API Gateway use `/api/v1`.
+The gateway owns the external prefix and forwards the path unchanged to the downstream service.
+
+## Downstream Ownership
+
+The following prefixes are routed to `backend-core`:
+
+- `/api/v1/auth/**`
+- `/api/v1/profiles/**`
+- `/api/v1/kyc/**`
+- `/api/v1/drivers/**`
+- `/api/v1/urban/**`
+- `/api/v1/pricing/**`
+- `/api/v1/intercity/**`
+- `/api/v1/bookings/**`
+- `/api/v1/wallet/**`
+- `/api/v1/payments/**`
+- `/api/v1/nfc/**`
+- `/api/v1/trips/**`
+- `/api/v1/offline/**`
+- `/api/v1/notifications/**`
+- `/api/v1/support/**`
+- `/api/v1/integrations/mobile-money/**`
+- `/api/v1/admin/**`
+
+The `/api/v1/ai/**` prefix is routed to `backend-ai` as a technical route. Business rules for AI integrations remain covered by later tickets.
+
+No route is exposed directly to PostgreSQL/PostGIS, MinIO, payment providers or push providers.
+
+## Correlation Id
+
+Every response includes `X-Correlation-Id`.
+If a client sends the header, the gateway preserves it. Otherwise, the gateway generates a UUID and propagates it to the downstream request.
+
+## Health And API Docs
+
+The following operational endpoints are intentionally unauthenticated but are not business API routes:
+
+- `GET /actuator/health`
+- `GET /actuator/health/readiness`
+- `GET /actuator/health/liveness`
+- `GET /actuator/info`
+
+The test and local API documentation entrypoints are versioned:
+
+- `GET /api/v1/docs`
+- `GET /api/v1/openapi`
+
+## Ticket Boundaries
+
+`GATE-PLAT-001` implements the secure platform baseline: versioned routes, CORS, security headers, correlation id, health endpoints and API docs.
+JWT validation, RBAC, rate limiting, realtime channels and callback signature verification are intentionally deferred to their dedicated tickets.
