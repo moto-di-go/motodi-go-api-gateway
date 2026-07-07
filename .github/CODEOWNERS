@@ -1,0 +1,4 @@
+* @moto-di-go/dev-team
+.github/ @moto-di-go/devops
+Dockerfile @moto-di-go/devops
+docker-compose*.yml @moto-di-go/devops

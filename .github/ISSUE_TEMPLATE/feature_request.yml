@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a product or platform improvement
+title: "[FEATURE] "
+labels: ["type:feature", "project:moto-di-go"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+      description: What user, admin, or platform need does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the intended behavior and acceptance criteria.
+    validations:
+      required: true
+  - type: input
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Related tickets, services, or environment changes.

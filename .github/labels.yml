@@ -1,0 +1,22 @@
+labels:
+  - name: project:moto-di-go
+    color: "0f766e"
+    description: "MOTO'DI GO project scope"
+  - name: priority:high
+    color: "dc2626"
+    description: "High priority work"
+  - name: priority:medium
+    color: "f59e0b"
+    description: "Medium priority work"
+  - name: type:feature
+    color: "2563eb"
+    description: "New product or platform feature"
+  - name: type:bug
+    color: "b91c1c"
+    description: "Defect or regression"
+  - name: area:devops
+    color: "334155"
+    description: "Infrastructure, CI/CD, environments"
+  - name: area:admin
+    color: "7c3aed"
+    description: "Admin dashboard and back-office"
