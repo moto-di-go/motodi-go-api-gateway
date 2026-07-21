@@ -32,7 +32,9 @@ class SecurityConfig {
 						.requestMatchers(
 								"/actuator/health/**",
 								"/actuator/info",
-								"/error").permitAll()
+								"/error",
+								"/swagger-ui/**",
+								"/webjars/**").permitAll()
 						.requestMatchers("/api/v1/**").permitAll()
 						.anyRequest().denyAll())
 				.headers(headers -> configureHeaders(headers, isLocalProfile(environment)));

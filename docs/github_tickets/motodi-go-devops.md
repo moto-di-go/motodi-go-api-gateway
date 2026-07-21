@@ -25,7 +25,7 @@ En tant qu'equipe technique, je veux disposer de depots GitHub, branches protege
 ## Taches
 
 - Creer/configurer les depots `motodi-go-backend-core`, `motodi-go-backend-ai`, `motodi-go-api-gateway`, `motodi-go-mobile`, `motodi-go-admin-dashboard` et `motodi-go-devops`.
-- Definir branches `main`, `develop`, regles PR, CODEOWNERS et templates d'issues.
+- Definir branches `main`, `dev`, regles PR, CODEOWNERS et templates d'issues.
 - Ajouter conventions de nommage, labels GitHub et milestones MVP/V1.1/V1.2.
 - Documenter la strategie d'environnements local, staging et production.
 
@@ -155,4 +155,3 @@ En tant qu'equipe produit, je veux deployer le MVP sur VPS Ubuntu avec rollback 
 
 - Backlog: MGO-034
 - Cahier des charges: section 6, section 7
-

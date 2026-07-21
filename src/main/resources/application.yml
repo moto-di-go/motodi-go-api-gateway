@@ -23,7 +23,7 @@ management:
 
 springdoc:
   api-docs:
-    path: /api/v1/openapi
+    enabled: false
   swagger-ui:
     enabled: false
 
