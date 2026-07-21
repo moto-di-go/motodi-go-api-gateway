@@ -1,8 +1,14 @@
 package com.motodigo.gateway.config;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
+import javax.crypto.spec.SecretKeySpec;
+
+import com.motodigo.gateway.security.GatewayJwtAuthenticationConverter;
+import com.motodigo.gateway.security.RateLimitingFilter;
 import com.motodigo.gateway.web.CorrelationIdFilter;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -12,7 +18,19 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -22,7 +40,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 class SecurityConfig {
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http, Environment environment) throws Exception {
+	SecurityFilterChain securityFilterChain(HttpSecurity http, Environment environment,
+			AuthenticationEntryPoint authenticationEntryPoint,
+			AccessDeniedHandler accessDeniedHandler,
+			GatewayJwtAuthenticationConverter jwtAuthenticationConverter,
+			RateLimitingFilter rateLimitingFilter) throws Exception {
 		http
 				.csrf(AbstractHttpConfigurer::disable)
 				.cors(Customizer.withDefaults())
@@ -32,12 +54,87 @@ class SecurityConfig {
 						.requestMatchers(
 								"/actuator/health/**",
 								"/actuator/info",
-								"/error").permitAll()
-						.requestMatchers("/api/v1/**").permitAll()
+								"/error",
+								"/swagger-ui/**",
+								"/webjars/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/openapi", "/api/v1/docs").permitAll()
+						.requestMatchers(HttpMethod.POST,
+								"/api/v1/auth/register",
+								"/api/v1/auth/otp/verify",
+								"/api/v1/auth/otp/resend",
+								"/api/v1/auth/login",
+								"/api/v1/auth/refresh",
+								"/api/v1/auth/password/forgot",
+								"/api/v1/auth/password/reset").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/integrations/mobile-money/callback").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
+						.requestMatchers(HttpMethod.GET, "/api/v1/profiles", "/api/v1/profiles/current").hasAuthority("PROFILE_READ")
+						.requestMatchers(HttpMethod.POST, "/api/v1/profiles").authenticated()
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/active/*").hasAuthority("PROFILE_SWITCH")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/*").hasAuthority("PROFILE_UPDATE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/kyc/documents").hasAuthority("KYC_UPLOAD")
+						.requestMatchers(HttpMethod.PUT, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
+						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/bookings").hasAuthority("PASSENGER_BOOK_RIDE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/kyc/pending", "/api/v1/admin/kyc/*/documents").hasAuthority("KYC_REVIEW_READ")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/kyc/*/decision").hasAuthority("KYC_DECIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue").hasAuthority("MODERATION_READ")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/moderation/actions").hasAuthority("MODERATION_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/overview", "/api/v1/admin/ops/bookings").hasAuthority("OPERATIONS_READ")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_READ")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/gis/layers").hasAuthority("GIS_READ")
+						.requestMatchers(HttpMethod.PUT, "/api/v1/admin/gis/layers").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/kpi", "/api/v1/admin/kpi/export.csv").hasAuthority("KPI_READ")
+						.requestMatchers("/api/v1/profiles/**",
+								"/api/v1/pricing/**",
+								"/api/v1/intercity/**",
+								"/api/v1/ai/**",
+								"/api/v1/wallet/**",
+								"/api/v1/payments/**",
+								"/api/v1/offline/**",
+								"/api/v1/trips/**",
+								"/api/v1/support/**",
+								"/api/v1/notifications/**").authenticated()
+						.requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
+						.requestMatchers("/api/v1/**").authenticated()
 						.anyRequest().denyAll())
+				.exceptionHandling(exceptions -> exceptions
+						.authenticationEntryPoint(authenticationEntryPoint)
+						.accessDeniedHandler(accessDeniedHandler))
+				.oauth2ResourceServer(oauth2 -> oauth2
+						.authenticationEntryPoint(authenticationEntryPoint)
+						.accessDeniedHandler(accessDeniedHandler)
+						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+				.addFilterAfter(rateLimitingFilter, BearerTokenAuthenticationFilter.class)
 				.headers(headers -> configureHeaders(headers, isLocalProfile(environment)));
 
 		return http.build();
+	}
+
+	@Bean
+	FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegistration(RateLimitingFilter filter) {
+		FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>(filter);
+		registration.setEnabled(false);
+		return registration;
+	}
+
+	@Bean
+	JwtDecoder jwtDecoder(GatewayProperties properties) {
+		byte[] secret = properties.auth().jwtSecret().getBytes(StandardCharsets.UTF_8);
+		SecretKeySpec key = new SecretKeySpec(secret, "HmacSHA256");
+		NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key)
+				.macAlgorithm(MacAlgorithm.HS256)
+				.build();
+		OAuth2TokenValidator<Jwt> issuerValidator = JwtValidators.createDefaultWithIssuer(properties.auth().issuerUrl());
+		OAuth2TokenValidator<Jwt> audienceValidator = jwt -> jwt.getAudience().contains(properties.auth().audience())
+				? OAuth2TokenValidatorResult.success()
+				: OAuth2TokenValidatorResult.failure(
+						new OAuth2Error("invalid_token", "Invalid token audience", null));
+		decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuerValidator, audienceValidator));
+		return decoder;
 	}
 
 	@Bean

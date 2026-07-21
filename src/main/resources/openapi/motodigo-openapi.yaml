@@ -1,0 +1,1250 @@
+openapi: 3.0.3
+info:
+  title: MOTO'DI GO API Gateway
+  version: 1.0.0
+  description: Contractual API v1 exposed by the gateway. Some operations describe future modules; calls still pass through the gateway.
+servers:
+  - url: /
+tags:
+  - name: Auth
+  - name: Profiles
+  - name: KYC
+  - name: SIG
+  - name: Intercity
+  - name: AI
+  - name: Wallet/Payments
+  - name: Offline/NFC
+  - name: Trips
+  - name: Support
+  - name: Admin
+  - name: Realtime
+  - name: Health
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    CallbackSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Optional client correlation id propagated by the gateway.
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    ApiError:
+      type: object
+      required: [errorCode, message, timestamp]
+      properties:
+        errorCode:
+          type: string
+          example: OTP_INVALID
+        message:
+          type: string
+          example: Request cannot be completed.
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    GenericObject:
+      type: object
+      additionalProperties: true
+    PhoneRequest:
+      type: object
+      required: [phoneNumber]
+      properties:
+        phoneNumber:
+          type: string
+          example: "+237699001122"
+    RegisterRequest:
+      allOf:
+        - $ref: '#/components/schemas/PhoneRequest'
+        - type: object
+          required: [password, cguAccepted]
+          properties:
+            password:
+              type: string
+              format: password
+              minLength: 8
+            fullName:
+              type: string
+              maxLength: 160
+            email:
+              type: string
+              format: email
+            cguAccepted:
+              type: boolean
+    RegisterResponse:
+      type: object
+      required: [userId, phoneNumber, status, otpExpiresAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        phoneNumber:
+          type: string
+        status:
+          type: string
+          example: PENDING_PHONE_VERIFICATION
+        otpExpiresAt:
+          type: string
+          format: date-time
+    OtpVerifyRequest:
+      allOf:
+        - $ref: '#/components/schemas/PhoneRequest'
+        - type: object
+          required: [code]
+          properties:
+            purpose:
+              type: string
+              description: Defaults to REGISTRATION when omitted.
+              enum: [REGISTRATION, LOGIN, PASSWORD_RESET, PAYMENT_CONFIRMATION]
+            code:
+              type: string
+              pattern: '^[0-9]+$'
+    OtpResendRequest:
+      allOf:
+        - $ref: '#/components/schemas/PhoneRequest'
+        - type: object
+          properties:
+            purpose:
+              type: string
+              description: Defaults to REGISTRATION when omitted.
+              enum: [REGISTRATION, LOGIN, PASSWORD_RESET, PAYMENT_CONFIRMATION]
+    OtpVerifyResponse:
+      type: object
+      required: [userId, phoneNumber, status]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        phoneNumber:
+          type: string
+        status:
+          type: string
+          example: ACTIVE
+    OtpResendResponse:
+      type: object
+      required: [phoneNumber, purpose, otpExpiresAt]
+      properties:
+        phoneNumber:
+          type: string
+        purpose:
+          type: string
+        otpExpiresAt:
+          type: string
+          format: date-time
+    LoginRequest:
+      allOf:
+        - $ref: '#/components/schemas/PhoneRequest'
+        - type: object
+          required: [password]
+          properties:
+            password:
+              type: string
+              format: password
+            deviceId:
+              type: string
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    AuthTokenResponse:
+      type: object
+      required: [tokenType, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, sessionId, userId, phoneNumber, roles, profiles, permissions]
+      properties:
+        tokenType:
+          type: string
+          example: Bearer
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshTokenExpiresAt:
+          type: string
+          format: date-time
+        sessionId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        phoneNumber:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [PASSENGER, MOTOTAXI, TRANSPORTER, AGENCY, ADMIN]
+        profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileTokenSummary'
+        activeProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        activeProfileType:
+          type: string
+          nullable: true
+          enum: [PASSENGER, MOTOTAXI, TRANSPORTER, AGENCY, ADMIN]
+        permissions:
+          type: array
+          items:
+            type: string
+    ProfileTokenSummary:
+      type: object
+      required: [id, type, validationStatus, active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [PASSENGER, MOTOTAXI, TRANSPORTER, AGENCY, ADMIN]
+        validationStatus:
+          type: string
+          enum: [DRAFT, PENDING, VALIDATED, REJECTED, SUSPENDED]
+        active:
+          type: boolean
+    CreateProfileRequest:
+      type: object
+      required: [type, displayName]
+      properties:
+        type:
+          type: string
+          enum: [PASSENGER, MOTOTAXI, TRANSPORTER, AGENCY]
+        displayName:
+          type: string
+          maxLength: 120
+        avatarUrl:
+          type: string
+          maxLength: 2048
+        passenger:
+          $ref: '#/components/schemas/PassengerProfileDetails'
+        driver:
+          $ref: '#/components/schemas/DriverProfileDetails'
+        motoTaxi:
+          $ref: '#/components/schemas/MotoTaxiProfileDetails'
+        transporter:
+          $ref: '#/components/schemas/TransporterProfileDetails'
+        agency:
+          $ref: '#/components/schemas/AgencyProfileDetails'
+    UpdateProfileRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          maxLength: 120
+        avatarUrl:
+          type: string
+          maxLength: 2048
+        passenger:
+          $ref: '#/components/schemas/PassengerProfileDetails'
+        driver:
+          $ref: '#/components/schemas/DriverProfileDetails'
+        motoTaxi:
+          $ref: '#/components/schemas/MotoTaxiProfileDetails'
+        transporter:
+          $ref: '#/components/schemas/TransporterProfileDetails'
+        agency:
+          $ref: '#/components/schemas/AgencyProfileDetails'
+    PassengerProfileDetails:
+      type: object
+      properties:
+        preferredLanguage:
+          type: string
+          maxLength: 16
+          example: fr
+        emergencyContact:
+          type: string
+          maxLength: 20
+          example: "+237699000001"
+    DriverProfileDetails:
+      type: object
+      properties:
+        availability:
+          type: string
+          readOnly: true
+          enum: [AVAILABLE, OCCUPIED, OFFLINE]
+        gpsConsent:
+          type: boolean
+        lastAvailabilityChangeAt:
+          type: string
+          format: date-time
+          readOnly: true
+    MotoTaxiProfileDetails:
+      type: object
+      properties:
+        licenseNumber:
+          type: string
+          maxLength: 80
+        operatingZone:
+          type: string
+          maxLength: 160
+    TransporterProfileDetails:
+      type: object
+      properties:
+        permitNumber:
+          type: string
+          maxLength: 80
+        companyName:
+          type: string
+          maxLength: 160
+    AgencyProfileDetails:
+      type: object
+      properties:
+        legalName:
+          type: string
+          maxLength: 180
+        tradeRegisterNumber:
+          type: string
+          maxLength: 80
+        billingPlan:
+          type: string
+          maxLength: 80
+    AdminProfileDetails:
+      type: object
+      readOnly: true
+      properties:
+        adminRole:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    ProfileResponse:
+      type: object
+      required: [id, userId, type, validationStatus, displayName, averageRating, active, createdAt, updatedAt, allowedActions]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [PASSENGER, MOTOTAXI, TRANSPORTER, AGENCY, ADMIN]
+        validationStatus:
+          type: string
+          enum: [DRAFT, PENDING, VALIDATED, REJECTED, SUSPENDED]
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        averageRating:
+          type: number
+          format: double
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        passenger:
+          $ref: '#/components/schemas/PassengerProfileDetails'
+        driver:
+          $ref: '#/components/schemas/DriverProfileDetails'
+        motoTaxi:
+          $ref: '#/components/schemas/MotoTaxiProfileDetails'
+        transporter:
+          $ref: '#/components/schemas/TransporterProfileDetails'
+        agency:
+          $ref: '#/components/schemas/AgencyProfileDetails'
+        admin:
+          $ref: '#/components/schemas/AdminProfileDetails'
+        allowedActions:
+          type: array
+          items:
+            type: string
+    ResetPasswordRequest:
+      allOf:
+        - $ref: '#/components/schemas/PhoneRequest'
+        - type: object
+          required: [code, newPassword]
+          properties:
+            code:
+              type: string
+            newPassword:
+              type: string
+              format: password
+              minLength: 8
+    PaymentRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+        currency:
+          type: string
+          enum: [XAF]
+        provider:
+          type: string
+          enum: [MTN_MOMO, ORANGE_MONEY, AGGREGATOR, WALLET, NFC]
+        phoneNumber:
+          type: string
+    PricingEstimateRequest:
+      type: object
+      required: [origin, destination]
+      properties:
+        origin:
+          $ref: '#/components/schemas/GeoPoint'
+        destination:
+          $ref: '#/components/schemas/GeoPoint'
+        serviceType:
+          type: string
+    GeoPoint:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+    ServerSentEvent:
+      type: object
+      properties:
+        event:
+          type: string
+        id:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+  responses:
+    Accepted:
+      description: Request accepted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericObject'
+    Empty:
+      description: Request completed without response body.
+    Error:
+      description: Stable error response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+security:
+  - BearerAuth: []
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a phone account and send a registration OTP.
+      operationId: registerAccount
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created pending phone verification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/otp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify an OTP for registration, login, payment, or reset.
+      operationId: verifyOtp
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequest'
+      responses:
+        '200':
+          description: OTP accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/otp/resend:
+    post:
+      tags: [Auth]
+      summary: Resend an OTP subject to cooldown and quotas.
+      operationId: resendOtp
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpResendRequest'
+      responses:
+        '202':
+          description: OTP resend accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResendResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate and create an access/refresh session.
+      operationId: login
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate an opaque refresh token and issue a new access token.
+      operationId: refreshSession
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Rotated session tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current session identified by the JWT sid claim.
+      operationId: logout
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '204':
+          $ref: '#/components/responses/Empty'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Send a password reset OTP with anti-enumeration behavior.
+      operationId: forgotPassword
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Reset a password with a valid reset OTP and revoke sessions.
+      operationId: resetPassword
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Empty'
+        '400':
+          $ref: '#/components/responses/Error'
+  /api/v1/profiles:
+    get:
+      tags: [Profiles]
+      summary: List profiles owned by the authenticated user.
+      operationId: listProfiles
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Profiles owned by the authenticated user.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Profiles]
+      summary: Create a user profile.
+      operationId: createProfile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProfileRequest'
+      responses:
+        '201':
+          description: Profile created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/profiles/current:
+    get:
+      tags: [Profiles]
+      summary: Get the active profile and its allowed actions.
+      operationId: getCurrentProfile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Active profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/profiles/{profileId}:
+    patch:
+      tags: [Profiles]
+      summary: Update a profile owned by the authenticated user.
+      operationId: updateProfile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/ProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/profiles/active/{profileId}:
+    patch:
+      tags: [Profiles]
+      summary: Select the active profile for the current user.
+      operationId: activateProfile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: Activated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/kyc/documents:
+    post:
+      tags: [KYC]
+      summary: Upload a KYC document.
+      operationId: uploadKycDocument
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                type:
+                  type: string
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/Error'
+  /api/v1/drivers/position:
+    put:
+      tags: [SIG]
+      summary: Publish the current driver position.
+      operationId: updateDriverPosition
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeoPoint'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/urban/drivers/nearby:
+    get:
+      tags: [SIG]
+      summary: Search nearby urban drivers.
+      operationId: findNearbyUrbanDrivers
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+        - name: lon
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/pricing/estimate:
+    post:
+      tags: [SIG]
+      summary: Estimate an urban or intercity price.
+      operationId: estimatePricing
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingEstimateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/intercity/announcements:
+    get:
+      tags: [Intercity]
+      summary: Search intercity announcements.
+      operationId: searchIntercityAnnouncements
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+    post:
+      tags: [Intercity]
+      summary: Create an intercity announcement.
+      operationId: createIntercityAnnouncement
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/intercity/announcements/{id}/bookings:
+    post:
+      tags: [Intercity]
+      summary: Book seats on an intercity announcement.
+      operationId: bookIntercityAnnouncement
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/ai/recommendations:
+    post:
+      tags: [AI]
+      summary: Request AI travel recommendations.
+      operationId: requestAiRecommendations
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/wallet/deposits:
+    post:
+      tags: [Wallet/Payments]
+      summary: Initiate a wallet deposit.
+      operationId: createWalletDeposit
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/integrations/mobile-money/callback:
+    post:
+      tags: [Wallet/Payments]
+      summary: Receive mobile money provider callback.
+      operationId: mobileMoneyCallback
+      security:
+        - CallbackSignature: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/bookings/{id}/pay:
+    post:
+      tags: [Wallet/Payments]
+      summary: Pay a booking from wallet or mobile money.
+      operationId: payBooking
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/nfc/tokens:
+    post:
+      tags: [Offline/NFC]
+      summary: Issue an offline NFC payment token.
+      operationId: issueNfcToken
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/offline/sync:
+    post:
+      tags: [Offline/NFC]
+      summary: Synchronize queued offline operations.
+      operationId: syncOfflineOperations
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/trips/active:
+    get:
+      tags: [Trips]
+      summary: Get the active trip for the current user.
+      operationId: getActiveTrip
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/trips/{id}/status:
+    patch:
+      tags: [Trips]
+      summary: Update trip status.
+      operationId: updateTripStatus
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/trips/{id}/complete:
+    post:
+      tags: [Trips]
+      summary: Complete a trip.
+      operationId: completeTrip
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/trips/{id}/ratings:
+    post:
+      tags: [Trips]
+      summary: Rate a completed trip.
+      operationId: rateTrip
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/trips/{id}/events:
+    get:
+      tags: [Realtime]
+      summary: Subscribe to trip events as server-sent events.
+      description: Represents Subscribe trip.{tripId} from the sequence diagrams.
+      operationId: subscribeTripEvents
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Event stream for the trip.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ServerSentEvent'
+  /api/v1/support/tickets:
+    post:
+      tags: [Support]
+      summary: Create a support ticket.
+      operationId: createSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/kyc/pending:
+    get:
+      tags: [Admin, KYC]
+      summary: List KYC items pending review.
+      operationId: listPendingKyc
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/kyc/{profileId}/documents:
+    get:
+      tags: [Admin, KYC]
+      summary: List KYC documents for a profile.
+      operationId: listProfileKycDocuments
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/kyc/{profileId}/decision:
+    post:
+      tags: [Admin, KYC]
+      summary: Approve, reject, or suspend a KYC profile.
+      operationId: decideKycProfile
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/ProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/moderation/queue:
+    get:
+      tags: [Admin]
+      summary: List moderation queue entries.
+      operationId: listModerationQueue
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/moderation/actions:
+    post:
+      tags: [Admin]
+      summary: Apply a moderation action.
+      operationId: createModerationAction
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '201':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/overview:
+    get:
+      tags: [Admin]
+      summary: Get operations overview.
+      operationId: getOperationsOverview
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/bookings:
+    get:
+      tags: [Admin]
+      summary: Search operational bookings.
+      operationId: searchOperationalBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/pricing/rules:
+    get:
+      tags: [Admin]
+      summary: List pricing rules.
+      operationId: listPricingRules
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+    post:
+      tags: [Admin]
+      summary: Create or update a pricing rule.
+      operationId: upsertPricingRule
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/gis/layers:
+    get:
+      tags: [Admin, SIG]
+      summary: List GIS layers.
+      operationId: listGisLayers
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+    put:
+      tags: [Admin, SIG]
+      summary: Publish or replace GIS layer data.
+      operationId: replaceGisLayer
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/kpi:
+    get:
+      tags: [Admin]
+      summary: Get platform KPI snapshots.
+      operationId: getKpiSnapshots
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/kpi/export.csv:
+    get:
+      tags: [Admin]
+      summary: Export KPI snapshots as CSV.
+      operationId: exportKpiCsv
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: CSV export.
+          content:
+            text/csv:
+              schema:
+                type: string
+  /actuator/health:
+    get:
+      tags: [Health]
+      summary: Health endpoint.
+      operationId: health
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /actuator/health/readiness:
+    get:
+      tags: [Health]
+      summary: Readiness probe.
+      operationId: readiness
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /actuator/health/liveness:
+    get:
+      tags: [Health]
+      summary: Liveness probe.
+      operationId: liveness
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'

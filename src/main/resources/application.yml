@@ -1,6 +1,11 @@
 spring:
   application:
     name: motodi-go-api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: ${REDIS_TIMEOUT:2s}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -23,7 +28,7 @@ management:
 
 springdoc:
   api-docs:
-    path: /api/v1/openapi
+    enabled: false
   swagger-ui:
     enabled: false
 
@@ -33,3 +38,25 @@ motodigo:
     backend-ai-base-url: ${BACKEND_AI_BASE_URL:http://localhost:8000}
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}
+    auth:
+      jwt-secret: ${JWT_SECRET:change-me-to-at-least-32-bytes-for-hs256}
+      issuer-url: ${JWT_ISSUER_URL:http://localhost:8080}
+      audience: ${JWT_AUDIENCE:motodi-go-api}
+    rate-limit:
+      enabled: ${GATEWAY_RATE_LIMIT_ENABLED:true}
+      auth:
+        capacity: ${GATEWAY_RATE_LIMIT_AUTH_CAPACITY:5}
+        refill-tokens: ${GATEWAY_RATE_LIMIT_AUTH_REFILL_TOKENS:1}
+        refill-period-seconds: ${GATEWAY_RATE_LIMIT_AUTH_REFILL_PERIOD_SECONDS:120}
+      otp:
+        capacity: ${GATEWAY_RATE_LIMIT_OTP_CAPACITY:5}
+        refill-tokens: ${GATEWAY_RATE_LIMIT_OTP_REFILL_TOKENS:1}
+        refill-period-seconds: ${GATEWAY_RATE_LIMIT_OTP_REFILL_PERIOD_SECONDS:120}
+      payment:
+        capacity: ${GATEWAY_RATE_LIMIT_PAYMENT_CAPACITY:10}
+        refill-tokens: ${GATEWAY_RATE_LIMIT_PAYMENT_REFILL_TOKENS:10}
+        refill-period-seconds: ${GATEWAY_RATE_LIMIT_PAYMENT_REFILL_PERIOD_SECONDS:60}
+      callback:
+        capacity: ${GATEWAY_RATE_LIMIT_CALLBACK_CAPACITY:60}
+        refill-tokens: ${GATEWAY_RATE_LIMIT_CALLBACK_REFILL_TOKENS:60}
+        refill-period-seconds: ${GATEWAY_RATE_LIMIT_CALLBACK_REFILL_PERIOD_SECONDS:60}
