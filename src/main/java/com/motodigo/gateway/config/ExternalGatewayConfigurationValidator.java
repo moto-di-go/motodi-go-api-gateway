@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 class ExternalGatewayConfigurationValidator implements SmartInitializingSingleton {
 
 	private static final Set<String> LOCAL_PROFILES = Set.of("local", "test");
+	private static final String DEFAULT_JWT_SECRET = "change-me-to-at-least-32-bytes-for-hs256";
 
 	private final Environment environment;
 	private final GatewayProperties properties;
@@ -30,6 +31,7 @@ class ExternalGatewayConfigurationValidator implements SmartInitializingSingleto
 				throw new IllegalStateException("CORS_ALLOWED_ORIGINS must not include local origins outside local/test profiles");
 			}
 		}
+		requireNonDefault("JWT_SECRET", this.properties.auth().jwtSecret(), DEFAULT_JWT_SECRET);
 	}
 
 	private boolean isLocalOrTest() {
@@ -38,5 +40,11 @@ class ExternalGatewayConfigurationValidator implements SmartInitializingSingleto
 
 	private static boolean isLocalOrigin(String origin) {
 		return origin.contains("localhost") || origin.contains("127.0.0.1") || origin.contains("[::1]");
+	}
+
+	private static void requireNonDefault(String name, String actualValue, String defaultValue) {
+		if (defaultValue.equals(actualValue)) {
+			throw new IllegalStateException(name + " must be configured outside local/test profiles");
+		}
 	}
 }
