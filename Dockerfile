@@ -5,7 +5,6 @@ WORKDIR /app
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
 RUN chmod +x mvnw
-RUN ./mvnw -B dependency:go-offline
 
 COPY src ./src
 RUN ./mvnw -B package -DskipTests
@@ -13,6 +12,10 @@ RUN ./mvnw -B package -DskipTests
 FROM eclipse-temurin:21-jre AS runtime
 
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/target/*.jar app.jar
 

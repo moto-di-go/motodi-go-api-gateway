@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -90,15 +91,57 @@ class MotodiGoApiGatewayApplicationTests {
 	void versionedOpenApiAndDocsArePublicInTestProfile() {
 		var openApi = this.restTemplate.getForEntity(url("/api/v1/openapi"), String.class);
 		var docs = this.restTemplate.getForEntity(url("/api/v1/docs"), String.class);
+		var swaggerCss = this.restTemplate.getForEntity(url("/webjars/swagger-ui/5.32.0/swagger-ui.css"), String.class);
 		var oldOpenApiPath = this.restTemplate.getForEntity(url("/v3/api-docs/gateway"), String.class);
 
 		assertThat(openApi.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(openApi.getHeaders().getFirst(CorrelationIdFilter.HEADER_NAME)).isNotBlank();
-		assertThat(openApi.getBody()).contains("\"openapi\"");
+		assertThat(openApi.getBody())
+				.contains("openapi: 3.0.3")
+				.contains("/api/v1/auth/register")
+				.contains("/api/v1/auth/otp/verify")
+				.contains("/api/v1/auth/otp/resend")
+				.contains("/api/v1/auth/login")
+				.contains("/api/v1/auth/refresh")
+				.contains("/api/v1/auth/logout")
+				.contains("/api/v1/auth/password/forgot")
+				.contains("/api/v1/auth/password/reset");
+		assertThat(openApi.getBody()).contains(requiredContractPaths().toArray(String[]::new));
+		assertThat(openApi.getBody())
+				.contains("errorCode:")
+				.contains("timestamp:")
+				.contains("otpExpiresAt:")
+				.contains("OtpVerifyResponse:")
+				.contains("OtpResendResponse:")
+				.contains("accessTokenExpiresAt:")
+				.contains("refreshTokenExpiresAt:")
+				.contains("userId:")
+				.contains("phoneNumber:")
+				.contains("CreateProfileRequest:")
+				.contains("UpdateProfileRequest:")
+				.contains("ProfileResponse:")
+				.contains("ProfileTokenSummary:")
+				.contains("activeProfileId:")
+				.contains("permissions:")
+				.contains("required: [code, newPassword]");
+		assertThat(openApi.getBody())
+				.doesNotContain("otpCode:")
+				.doesNotContain("expiresIn:")
+				.doesNotContain("required: [purpose, code]")
+				.doesNotContain("required: [otpCode, newPassword]");
 
-		assertThat(docs.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(docs.getStatusCode().is2xxSuccessful() || docs.getStatusCode().is3xxRedirection()).isTrue();
 		assertThat(docs.getHeaders().getFirst(CorrelationIdFilter.HEADER_NAME)).isNotBlank();
-		assertThat(docs.getBody()).contains("/api/v1/openapi");
+		if (docs.getStatusCode().is2xxSuccessful()) {
+			assertThat(docs.getBody()).contains("Swagger UI", "/api/v1/openapi", "/webjars/swagger-ui/5.32.0/swagger-ui.css");
+		}
+		else {
+			assertThat(docs.getHeaders().getLocation().toString()).contains("/swagger-ui");
+		}
+
+		assertThat(swaggerCss.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(swaggerCss.getHeaders().getFirst(CorrelationIdFilter.HEADER_NAME)).isNotBlank();
+		assertThat(swaggerCss.getBody()).contains(".swagger-ui");
 
 		assertThat(oldOpenApiPath.getStatusCode().is2xxSuccessful()).isFalse();
 		assertThat(oldOpenApiPath.getHeaders().getFirst(CorrelationIdFilter.HEADER_NAME)).isNotBlank();
@@ -162,6 +205,16 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void exactProfilesCollectionRouteIsRoutedToBackendCore() throws Exception {
+		var response = this.restTemplate.postForEntity(url("/api/v1/profiles"), HttpEntity.EMPTY, String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/profiles");
+	}
+
+	@Test
 	void commonGatewayEndpointAverageLatencyStaysBelowTwoHundredMillisecondsWithoutExternalDependency() {
 		for (int i = 0; i < 5; i++) {
 			this.restTemplate.getForEntity(url("/api/v1/urban/drivers/nearby?lat=3.87&lon=11.52"), String.class);
@@ -196,6 +249,46 @@ class MotodiGoApiGatewayApplicationTests {
 
 	private String url(String path) {
 		return "http://localhost:" + this.port + path;
+	}
+
+	private static List<String> requiredContractPaths() {
+		return List.of(
+				"/api/v1/profiles",
+				"/api/v1/profiles/current",
+				"/api/v1/profiles/{profileId}",
+				"/api/v1/profiles/active/{profileId}",
+				"/api/v1/kyc/documents",
+				"/api/v1/admin/kyc/pending",
+				"/api/v1/admin/kyc/{profileId}/documents",
+				"/api/v1/admin/kyc/{profileId}/decision",
+				"/api/v1/drivers/position",
+				"/api/v1/urban/drivers/nearby",
+				"/api/v1/pricing/estimate",
+				"/api/v1/intercity/announcements",
+				"/api/v1/intercity/announcements/{id}/bookings",
+				"/api/v1/ai/recommendations",
+				"/api/v1/wallet/deposits",
+				"/api/v1/integrations/mobile-money/callback",
+				"/api/v1/bookings/{id}/pay",
+				"/api/v1/nfc/tokens",
+				"/api/v1/offline/sync",
+				"/api/v1/trips/active",
+				"/api/v1/trips/{id}/status",
+				"/api/v1/trips/{id}/complete",
+				"/api/v1/trips/{id}/ratings",
+				"/api/v1/trips/{id}/events",
+				"/api/v1/support/tickets",
+				"/api/v1/admin/moderation/queue",
+				"/api/v1/admin/moderation/actions",
+				"/api/v1/admin/ops/overview",
+				"/api/v1/admin/ops/bookings",
+				"/api/v1/admin/pricing/rules",
+				"/api/v1/admin/gis/layers",
+				"/api/v1/admin/kpi",
+				"/api/v1/admin/kpi/export.csv",
+				"/actuator/health",
+				"/actuator/health/readiness",
+				"/actuator/health/liveness");
 	}
 
 	private static synchronized HttpServer backendCoreServer() throws IOException {

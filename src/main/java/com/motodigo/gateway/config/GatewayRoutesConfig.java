@@ -15,6 +15,7 @@ class GatewayRoutesConfig {
 
 	private static final String[] BACKEND_CORE_PREFIXES = {
 			"/api/v1/auth/**",
+			"/api/v1/profiles",
 			"/api/v1/profiles/**",
 			"/api/v1/kyc/**",
 			"/api/v1/drivers/**",
