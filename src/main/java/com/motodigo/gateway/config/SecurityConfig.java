@@ -72,13 +72,17 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/profiles").authenticated()
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/active/*").hasAuthority("PROFILE_SWITCH")
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/*").hasAuthority("PROFILE_UPDATE")
-						.requestMatchers(HttpMethod.POST, "/api/v1/kyc/documents").hasAuthority("KYC_UPLOAD")
+						.requestMatchers(HttpMethod.GET, "/api/v1/kyc/documents").authenticated()
+						.requestMatchers(HttpMethod.POST, "/api/v1/kyc/documents").authenticated()
 						.requestMatchers(HttpMethod.PUT, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
 						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby").hasAuthority("PASSENGER_SEARCH_RIDE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/bookings").hasAuthority("PASSENGER_BOOK_RIDE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
-						.requestMatchers(HttpMethod.GET, "/api/v1/admin/kyc/pending", "/api/v1/admin/kyc/*/documents").hasAuthority("KYC_REVIEW_READ")
+						.requestMatchers(HttpMethod.GET,
+								"/api/v1/admin/kyc/pending",
+								"/api/v1/admin/kyc/*/documents",
+								"/api/v1/admin/kyc/documents/*/content").hasAuthority("KYC_REVIEW_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/kyc/*/decision").hasAuthority("KYC_DECIDE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue").hasAuthority("MODERATION_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/moderation/actions").hasAuthority("MODERATION_WRITE")

@@ -275,6 +275,46 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void kycUploadIsRoutedWithAuthenticatedJwtEvenBeforeRefreshedProfilePermissions() throws Exception {
+		HttpHeaders headers = authHeaders(List.of("PROFILE_READ"));
+
+		var response = this.restTemplate.exchange(
+				url("/api/v1/kyc/documents"),
+				HttpMethod.POST,
+				new HttpEntity<>("", headers),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/kyc/documents");
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
+	void adminKycDocumentContentRequiresReviewPermission() throws Exception {
+		UUID documentId = UUID.randomUUID();
+
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/documents/" + documentId + "/content"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("PROFILE_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/documents/" + documentId + "/content"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/documents/" + documentId + "/content");
+	}
+
+	@Test
 	void aiPrefixIsRoutedToBackendAi() throws Exception {
 		var response = this.restTemplate.exchange(
 				url("/api/v1/ai/recommendations"),
