@@ -315,6 +315,50 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void adminKycPendingRequiresReviewPermission() throws Exception {
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/pending"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("PROFILE_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/pending"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/pending");
+	}
+
+	@Test
+	void adminKycDecisionRequiresDecisionPermission() throws Exception {
+		UUID profileId = UUID.randomUUID();
+
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/" + profileId + "/decision"),
+				HttpMethod.POST,
+				new HttpEntity<>("{\"decision\":\"VALIDATE\"}", authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/" + profileId + "/decision"),
+				HttpMethod.POST,
+				new HttpEntity<>("{\"decision\":\"VALIDATE\"}", authHeaders(List.of("KYC_DECIDE"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/" + profileId + "/decision");
+	}
+
+	@Test
 	void aiPrefixIsRoutedToBackendAi() throws Exception {
 		var response = this.restTemplate.exchange(
 				url("/api/v1/ai/recommendations"),

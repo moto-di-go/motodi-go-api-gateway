@@ -162,7 +162,7 @@ components:
             $ref: '#/components/schemas/DocumentRequirementResponse'
     AdminKycDocumentResponse:
       type: object
-      required: [profileId, profileType, profileValidationStatus, displayName, documents]
+      required: [profileId, profileType, profileValidationStatus, displayName, documents, decisions]
       properties:
         profileId:
           type: string
@@ -179,6 +179,84 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OfficialDocumentResponse'
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationDecisionResponse'
+    AdminKycQueueItemResponse:
+      type: object
+      required: [profileId, profileType, profileValidationStatus, displayName, documentsCount, pendingDocumentsCount]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileType:
+          type: string
+          enum: [MOTOTAXI, TRANSPORTER]
+        profileValidationStatus:
+          type: string
+          enum: [PENDING]
+        displayName:
+          type: string
+        documentsCount:
+          type: integer
+          format: int64
+        pendingDocumentsCount:
+          type: integer
+          format: int64
+        oldestPendingDocumentAt:
+          type: string
+          format: date-time
+          nullable: true
+    KycDecision:
+      type: string
+      enum: [VALIDATE, REJECT]
+    AdminKycDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          $ref: '#/components/schemas/KycDecision'
+        reason:
+          type: string
+          nullable: true
+          description: Required when decision is REJECT.
+    AdminKycDecisionResponse:
+      type: object
+      required: [profileId, profileValidationStatus, decision, decisionRecord]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileValidationStatus:
+          type: string
+          enum: [VALIDATED, REJECTED]
+        decision:
+          $ref: '#/components/schemas/KycDecision'
+        decisionRecord:
+          $ref: '#/components/schemas/ValidationDecisionResponse'
+    ValidationDecisionResponse:
+      type: object
+      required: [id, profileId, decision, decidedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileId:
+          type: string
+          format: uuid
+        adminProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        decision:
+          $ref: '#/components/schemas/KycDecision'
+        reason:
+          type: string
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
     PhoneRequest:
       type: object
       required: [phoneNumber]
@@ -1210,7 +1288,17 @@ paths:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Pending KYC profile queue.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminKycQueueItemResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kyc/{profileId}/documents:
     get:
       tags: [Admin, KYC]
@@ -1270,7 +1358,7 @@ paths:
   /api/v1/admin/kyc/{profileId}/decision:
     post:
       tags: [Admin, KYC]
-      summary: Approve, reject, or suspend a KYC profile.
+      summary: Validate or reject a KYC profile.
       operationId: decideKycProfile
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1280,10 +1368,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/AdminKycDecisionRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: KYC decision result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminKycDecisionResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/moderation/queue:
     get:
       tags: [Admin]
