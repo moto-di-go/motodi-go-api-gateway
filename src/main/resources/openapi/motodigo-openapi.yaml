@@ -94,6 +94,10 @@ components:
           $ref: '#/components/schemas/DocumentType'
         status:
           $ref: '#/components/schemas/DocumentStatus'
+        fileName:
+          type: string
+          nullable: true
+          example: carte-grise.jpg
         mimeType:
           type: string
           example: application/pdf
