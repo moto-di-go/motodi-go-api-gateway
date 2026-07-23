@@ -70,6 +70,197 @@ components:
     GenericObject:
       type: object
       additionalProperties: true
+    DocumentType:
+      type: string
+      enum: [CNI, DRIVER_LICENSE, VEHICLE_REGISTRATION, INSURANCE, PROFILE_PHOTO]
+    DocumentStatus:
+      type: string
+      enum: [UPLOADED, ENCRYPTED, PENDING_REVIEW, ACCEPTED, REJECTED, EXPIRED]
+    OfficialDocumentResponse:
+      type: object
+      required: [id, profileId, type, status, mimeType, sizeBytes, uploadedAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileId:
+          type: string
+          format: uuid
+        vehicleId:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/DocumentType'
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        fileName:
+          type: string
+          nullable: true
+          example: carte-grise.jpg
+        mimeType:
+          type: string
+          example: application/pdf
+        sizeBytes:
+          type: integer
+          format: int64
+        rejectionReason:
+          type: string
+          nullable: true
+        uploadedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DocumentRequirementResponse:
+      type: object
+      required: [type, required, uploaded]
+      properties:
+        type:
+          $ref: '#/components/schemas/DocumentType'
+        required:
+          type: boolean
+        uploaded:
+          type: boolean
+        latestStatus:
+          allOf:
+            - $ref: '#/components/schemas/DocumentStatus'
+          nullable: true
+    KycDocumentsResponse:
+      type: object
+      required: [profileId, profileType, profileValidationStatus, requirements, documents]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileType:
+          type: string
+          enum: [MOTOTAXI, TRANSPORTER]
+        profileValidationStatus:
+          type: string
+          enum: [DRAFT, PENDING, VALIDATED, REJECTED, SUSPENDED]
+        requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentRequirementResponse'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfficialDocumentResponse'
+    UploadKycDocumentResponse:
+      type: object
+      required: [profileId, profileValidationStatus, document, requirements]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileValidationStatus:
+          type: string
+          enum: [DRAFT, PENDING, VALIDATED, REJECTED, SUSPENDED]
+        document:
+          $ref: '#/components/schemas/OfficialDocumentResponse'
+        requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentRequirementResponse'
+    AdminKycDocumentResponse:
+      type: object
+      required: [profileId, profileType, profileValidationStatus, displayName, documents, decisions]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileType:
+          type: string
+          enum: [MOTOTAXI, TRANSPORTER]
+        profileValidationStatus:
+          type: string
+          enum: [DRAFT, PENDING, VALIDATED, REJECTED, SUSPENDED]
+        displayName:
+          type: string
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfficialDocumentResponse'
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationDecisionResponse'
+    AdminKycQueueItemResponse:
+      type: object
+      required: [profileId, profileType, profileValidationStatus, displayName, documentsCount, pendingDocumentsCount]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileType:
+          type: string
+          enum: [MOTOTAXI, TRANSPORTER]
+        profileValidationStatus:
+          type: string
+          enum: [PENDING]
+        displayName:
+          type: string
+        documentsCount:
+          type: integer
+          format: int64
+        pendingDocumentsCount:
+          type: integer
+          format: int64
+        oldestPendingDocumentAt:
+          type: string
+          format: date-time
+          nullable: true
+    KycDecision:
+      type: string
+      enum: [VALIDATE, REJECT]
+    AdminKycDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          $ref: '#/components/schemas/KycDecision'
+        reason:
+          type: string
+          nullable: true
+          description: Required when decision is REJECT.
+    AdminKycDecisionResponse:
+      type: object
+      required: [profileId, profileValidationStatus, decision, decisionRecord]
+      properties:
+        profileId:
+          type: string
+          format: uuid
+        profileValidationStatus:
+          type: string
+          enum: [VALIDATED, REJECTED]
+        decision:
+          $ref: '#/components/schemas/KycDecision'
+        decisionRecord:
+          $ref: '#/components/schemas/ValidationDecisionResponse'
+    ValidationDecisionResponse:
+      type: object
+      required: [id, profileId, decision, decidedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileId:
+          type: string
+          format: uuid
+        adminProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        decision:
+          $ref: '#/components/schemas/KycDecision'
+        reason:
+          type: string
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
     PhoneRequest:
       type: object
       required: [phoneNumber]
@@ -758,6 +949,23 @@ paths:
         '404':
           $ref: '#/components/responses/Error'
   /api/v1/kyc/documents:
+    get:
+      tags: [KYC]
+      summary: List required and uploaded KYC documents for the active profile.
+      operationId: listCurrentKycDocuments
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: KYC requirements and uploaded documents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycDocumentsResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
     post:
       tags: [KYC]
       summary: Upload a KYC document.
@@ -770,16 +978,28 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required: [file, type]
               properties:
                 file:
                   type: string
                   format: binary
                 type:
+                  $ref: '#/components/schemas/DocumentType'
+                vehicleId:
                   type: string
+                  format: uuid
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
+          description: Uploaded encrypted document metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadKycDocumentResponse'
         '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
           $ref: '#/components/responses/Error'
   /api/v1/drivers/position:
     put:
@@ -1072,7 +1292,17 @@ paths:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Pending KYC profile queue.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminKycQueueItemResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kyc/{profileId}/documents:
     get:
       tags: [Admin, KYC]
@@ -1083,11 +1313,56 @@ paths:
         - $ref: '#/components/parameters/ProfileId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: KYC documents visible to an authorized admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminKycDocumentResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/admin/kyc/documents/{documentId}/content:
+    get:
+      tags: [Admin, KYC]
+      summary: Download decrypted KYC document content for review.
+      operationId: downloadKycDocumentContent
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Decrypted document bytes.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kyc/{profileId}/decision:
     post:
       tags: [Admin, KYC]
-      summary: Approve, reject, or suspend a KYC profile.
+      summary: Validate or reject a KYC profile.
       operationId: decideKycProfile
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1097,10 +1372,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/AdminKycDecisionRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: KYC decision result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminKycDecisionResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/moderation/queue:
     get:
       tags: [Admin]
