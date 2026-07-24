@@ -81,6 +81,7 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
 						.requestMatchers(HttpMethod.GET,
 								"/api/v1/admin/kyc/pending",
+								"/api/v1/admin/kyc/reviews",
 								"/api/v1/admin/kyc/*/documents",
 								"/api/v1/admin/kyc/documents/*/content").hasAuthority("KYC_REVIEW_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/kyc/*/decision").hasAuthority("KYC_DECIDE")

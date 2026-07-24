@@ -336,6 +336,28 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void adminKycReviewsRequiresReviewPermission() throws Exception {
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/reviews?profileType=MOTOTAXI&status=PENDING"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("PROFILE_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/reviews?profileType=MOTOTAXI&status=PENDING"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/reviews");
+		assertThat(request.query()).isEqualTo("profileType=MOTOTAXI&status=PENDING");
+	}
+
+	@Test
 	void adminKycDecisionRequiresDecisionPermission() throws Exception {
 		UUID profileId = UUID.randomUUID();
 
@@ -558,6 +580,7 @@ class MotodiGoApiGatewayApplicationTests {
 		server.createContext("/", exchange -> {
 			CAPTURED_REQUESTS.add(new CapturedRequest(
 					exchange.getRequestURI().getPath(),
+					exchange.getRequestURI().getQuery(),
 					exchange.getRequestHeaders().getFirst(CorrelationIdFilter.HEADER_NAME),
 					exchange.getRequestHeaders().getFirst(HttpHeaders.AUTHORIZATION)));
 			writeResponse(exchange, statusCode);
@@ -575,6 +598,6 @@ class MotodiGoApiGatewayApplicationTests {
 		}
 	}
 
-	private record CapturedRequest(String path, String correlationId, String authorization) {
+	private record CapturedRequest(String path, String query, String correlationId, String authorization) {
 	}
 }
