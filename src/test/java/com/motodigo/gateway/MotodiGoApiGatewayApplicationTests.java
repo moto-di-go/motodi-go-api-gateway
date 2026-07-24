@@ -292,6 +292,38 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void profileListIsRoutedWithAuthenticatedJwtEvenBeforeProfileReadPermission() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/profiles"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/profiles");
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
+	void profileActivationIsRoutedWithAuthenticatedJwtEvenBeforeProfileSwitchPermission() throws Exception {
+		UUID profileId = UUID.randomUUID();
+
+		var response = this.restTemplate.exchange(
+				url("/api/v1/profiles/active/" + profileId),
+				HttpMethod.PATCH,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/profiles/active/" + profileId);
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
 	void adminKycDocumentContentRequiresReviewPermission() throws Exception {
 		UUID documentId = UUID.randomUUID();
 
