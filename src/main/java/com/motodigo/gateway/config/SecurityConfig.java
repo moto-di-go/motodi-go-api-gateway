@@ -68,9 +68,10 @@ class SecurityConfig {
 								"/api/v1/auth/password/reset").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/integrations/mobile-money/callback").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
-						.requestMatchers(HttpMethod.GET, "/api/v1/profiles", "/api/v1/profiles/current").hasAuthority("PROFILE_READ")
+						.requestMatchers(HttpMethod.GET, "/api/v1/profiles").authenticated()
+						.requestMatchers(HttpMethod.GET, "/api/v1/profiles/current").hasAuthority("PROFILE_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/profiles").authenticated()
-						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/active/*").hasAuthority("PROFILE_SWITCH")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/active/*").authenticated()
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/profiles/*").hasAuthority("PROFILE_UPDATE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/kyc/documents").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/kyc/documents").authenticated()
@@ -81,9 +82,12 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
 						.requestMatchers(HttpMethod.GET,
 								"/api/v1/admin/kyc/pending",
+								"/api/v1/admin/kyc/reviews",
 								"/api/v1/admin/kyc/*/documents",
 								"/api/v1/admin/kyc/documents/*/content").hasAuthority("KYC_REVIEW_READ")
-						.requestMatchers(HttpMethod.POST, "/api/v1/admin/kyc/*/decision").hasAuthority("KYC_DECIDE")
+						.requestMatchers(HttpMethod.POST,
+								"/api/v1/admin/kyc/*/decision",
+								"/api/v1/admin/kyc/documents/*/decision").hasAuthority("KYC_DECIDE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue").hasAuthority("MODERATION_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/moderation/actions").hasAuthority("MODERATION_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/overview", "/api/v1/admin/ops/bookings").hasAuthority("OPERATIONS_READ")

@@ -292,6 +292,38 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void profileListIsRoutedWithAuthenticatedJwtEvenBeforeProfileReadPermission() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/profiles"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/profiles");
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
+	void profileActivationIsRoutedWithAuthenticatedJwtEvenBeforeProfileSwitchPermission() throws Exception {
+		UUID profileId = UUID.randomUUID();
+
+		var response = this.restTemplate.exchange(
+				url("/api/v1/profiles/active/" + profileId),
+				HttpMethod.PATCH,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/profiles/active/" + profileId);
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
 	void adminKycDocumentContentRequiresReviewPermission() throws Exception {
 		UUID documentId = UUID.randomUUID();
 
@@ -336,6 +368,28 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void adminKycReviewsRequiresReviewPermission() throws Exception {
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/reviews?profileType=MOTOTAXI&status=PENDING"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("PROFILE_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/reviews?profileType=MOTOTAXI&status=PENDING"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/reviews");
+		assertThat(request.query()).isEqualTo("profileType=MOTOTAXI&status=PENDING");
+	}
+
+	@Test
 	void adminKycDecisionRequiresDecisionPermission() throws Exception {
 		UUID profileId = UUID.randomUUID();
 
@@ -356,6 +410,31 @@ class MotodiGoApiGatewayApplicationTests {
 		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
 		assertThat(request).isNotNull();
 		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/" + profileId + "/decision");
+	}
+
+	@Test
+	void adminKycDocumentDecisionRequiresDecisionPermission() throws Exception {
+		UUID documentId = UUID.randomUUID();
+
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/documents/" + documentId + "/decision"),
+				HttpMethod.POST,
+				new HttpEntity<>("{\"decision\":\"REJECT\",\"reason\":\"Photo illisible\"}",
+						authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/documents/" + documentId + "/decision"),
+				HttpMethod.POST,
+				new HttpEntity<>("{\"decision\":\"REJECT\",\"reason\":\"Photo illisible\"}",
+						authHeaders(List.of("KYC_DECIDE"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/documents/" + documentId + "/decision");
 	}
 
 	@Test
@@ -558,6 +637,7 @@ class MotodiGoApiGatewayApplicationTests {
 		server.createContext("/", exchange -> {
 			CAPTURED_REQUESTS.add(new CapturedRequest(
 					exchange.getRequestURI().getPath(),
+					exchange.getRequestURI().getQuery(),
 					exchange.getRequestHeaders().getFirst(CorrelationIdFilter.HEADER_NAME),
 					exchange.getRequestHeaders().getFirst(HttpHeaders.AUTHORIZATION)));
 			writeResponse(exchange, statusCode);
@@ -575,6 +655,6 @@ class MotodiGoApiGatewayApplicationTests {
 		}
 	}
 
-	private record CapturedRequest(String path, String correlationId, String authorization) {
+	private record CapturedRequest(String path, String query, String correlationId, String authorization) {
 	}
 }
