@@ -70,6 +70,70 @@ components:
     GenericObject:
       type: object
       additionalProperties: true
+    WalletStatus:
+      type: string
+      enum: [ACTIVE, FROZEN, CLOSED]
+    LedgerEntryType:
+      type: string
+      enum: [CREDIT, DEBIT, REVERSAL, HOLD, RELEASE]
+    WalletResponse:
+      type: object
+      required: [id, currency, currentBalance, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          example: XAF
+        currentBalance:
+          type: number
+          format: double
+          example: 15000.00
+        status:
+          $ref: '#/components/schemas/WalletStatus'
+        createdAt:
+          type: string
+          format: date-time
+    LedgerEntryResponse:
+      type: object
+      required: [id, type, amount, currency, bookedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/LedgerEntryType'
+        amount:
+          type: number
+          format: double
+          example: 3000.00
+        currency:
+          type: string
+          example: XAF
+        reference:
+          type: string
+          nullable: true
+          example: paiement-trajet
+        bookedAt:
+          type: string
+          format: date-time
+    LedgerPageResponse:
+      type: object
+      required: [entries, page, size, hasMore]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerEntryResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        hasMore:
+          type: boolean
     DocumentType:
       type: string
       enum: [CNI, DRIVER_LICENSE, VEHICLE_REGISTRATION, INSURANCE, PROFILE_PHOTO]
@@ -1113,6 +1177,59 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+  /api/v1/wallet:
+    get:
+      tags: [Wallet/Payments]
+      summary: Get the authenticated user's wallet balance and status.
+      operationId: getWallet
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Wallet summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/wallet/ledger:
+    get:
+      tags: [Wallet/Payments]
+      summary: List the authenticated user's wallet movements, newest first.
+      operationId: getWalletLedger
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated ledger movements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerPageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /api/v1/wallet/deposits:
     post:
       tags: [Wallet/Payments]
