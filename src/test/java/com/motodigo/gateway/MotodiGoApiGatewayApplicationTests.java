@@ -307,6 +307,46 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void walletSummaryIsRoutedToBackendCoreForAuthenticatedUser() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/wallet"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/wallet");
+		assertThat(request.authorization()).startsWith("Bearer ");
+		assertThat(request.correlationId()).isNotBlank();
+	}
+
+	@Test
+	void walletLedgerIsRoutedToBackendCoreWithQueryPreserved() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/wallet/ledger?page=0&size=20"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/wallet/ledger");
+		assertThat(request.query()).isEqualTo("page=0&size=20");
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
+	void walletRequiresAuthenticationAtGateway() {
+		var response = this.restTemplate.getForEntity(url("/api/v1/wallet"), String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(response.getBody()).contains("\"errorCode\":\"AUTH_REQUIRED\"");
+	}
+
+	@Test
 	void profileActivationIsRoutedWithAuthenticatedJwtEvenBeforeProfileSwitchPermission() throws Exception {
 		UUID profileId = UUID.randomUUID();
 
@@ -410,6 +450,31 @@ class MotodiGoApiGatewayApplicationTests {
 		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
 		assertThat(request).isNotNull();
 		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/" + profileId + "/decision");
+	}
+
+	@Test
+	void adminKycDocumentDecisionRequiresDecisionPermission() throws Exception {
+		UUID documentId = UUID.randomUUID();
+
+		var forbidden = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/documents/" + documentId + "/decision"),
+				HttpMethod.POST,
+				new HttpEntity<>("{\"decision\":\"REJECT\",\"reason\":\"Photo illisible\"}",
+						authHeaders(List.of("KYC_REVIEW_READ"))),
+				String.class);
+		assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+		var allowed = this.restTemplate.exchange(
+				url("/api/v1/admin/kyc/documents/" + documentId + "/decision"),
+				HttpMethod.POST,
+				new HttpEntity<>("{\"decision\":\"REJECT\",\"reason\":\"Photo illisible\"}",
+						authHeaders(List.of("KYC_DECIDE"))),
+				String.class);
+
+		assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/admin/kyc/documents/" + documentId + "/decision");
 	}
 
 	@Test
@@ -551,6 +616,8 @@ class MotodiGoApiGatewayApplicationTests {
 				"/api/v1/intercity/announcements",
 				"/api/v1/intercity/announcements/{id}/bookings",
 				"/api/v1/ai/recommendations",
+				"/api/v1/wallet",
+				"/api/v1/wallet/ledger",
 				"/api/v1/wallet/deposits",
 				"/api/v1/integrations/mobile-money/callback",
 				"/api/v1/bookings/{id}/pay",

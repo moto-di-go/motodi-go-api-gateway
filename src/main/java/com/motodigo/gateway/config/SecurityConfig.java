@@ -85,7 +85,9 @@ class SecurityConfig {
 								"/api/v1/admin/kyc/reviews",
 								"/api/v1/admin/kyc/*/documents",
 								"/api/v1/admin/kyc/documents/*/content").hasAuthority("KYC_REVIEW_READ")
-						.requestMatchers(HttpMethod.POST, "/api/v1/admin/kyc/*/decision").hasAuthority("KYC_DECIDE")
+						.requestMatchers(HttpMethod.POST,
+								"/api/v1/admin/kyc/*/decision",
+								"/api/v1/admin/kyc/documents/*/decision").hasAuthority("KYC_DECIDE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue").hasAuthority("MODERATION_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/moderation/actions").hasAuthority("MODERATION_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/overview", "/api/v1/admin/ops/bookings").hasAuthority("OPERATIONS_READ")
