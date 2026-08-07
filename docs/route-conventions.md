@@ -17,7 +17,7 @@ The following prefixes are routed to `backend-core`:
 - `/api/v1/pricing/**`
 - `/api/v1/intercity/**`
 - `/api/v1/bookings/**`
-- `/api/v1/wallet/**`
+- `/api/v1/wallet/**` — CORE-WALLET-001 implemented reads: `GET /api/v1/wallet`, `GET /api/v1/wallet/ledger` (account-scoped, XAF). Deposits/payments remain CORE-PAY-*.
 - `/api/v1/payments/**`
 - `/api/v1/nfc/**`
 - `/api/v1/trips/**`

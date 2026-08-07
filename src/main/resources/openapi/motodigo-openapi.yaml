@@ -13,6 +13,10 @@ tags:
   - name: Intercity
   - name: AI
   - name: Wallet/Payments
+    description: >
+      CORE-WALLET-001 (implemented): account-scoped wallet balance and immutable ledger reads.
+      The wallet belongs to the user account (JWT subject), not the active profile.
+      CORE-PAY-001/002 (future): Mobile Money deposits, callbacks and ride payments.
   - name: Offline/NFC
   - name: Trips
   - name: Support
@@ -72,12 +76,19 @@ components:
       additionalProperties: true
     WalletStatus:
       type: string
+      description: Lifecycle status of the account wallet.
       enum: [ACTIVE, FROZEN, CLOSED]
     LedgerEntryType:
       type: string
+      description: >
+        Accounting movement type. CORE-WALLET-001 settles CREDIT and DEBIT on currentBalance.
+        REVERSAL, HOLD and RELEASE are reserved for refunds / NFC (later tickets).
       enum: [CREDIT, DEBIT, REVERSAL, HOLD, RELEASE]
     WalletResponse:
       type: object
+      description: >
+        Unique electronic wallet of the authenticated account (one wallet per user_id).
+        Currency is always XAF (FCFA). Switching the active profile does not change this wallet.
       required: [id, currency, currentBalance, status, createdAt]
       properties:
         id:
@@ -85,10 +96,14 @@ components:
           format: uuid
         currency:
           type: string
+          description: ISO 4217 currency code. Fixed to XAF for MVP.
+          enum: [XAF]
           example: XAF
         currentBalance:
           type: number
           format: double
+          minimum: 0
+          description: Settled balance derived from CREDIT minus DEBIT ledger entries.
           example: 15000.00
         status:
           $ref: '#/components/schemas/WalletStatus'
@@ -97,6 +112,7 @@ components:
           format: date-time
     LedgerEntryResponse:
       type: object
+      description: Immutable append-only ledger movement (audited, never updated in place).
       required: [id, type, amount, currency, bookedAt]
       properties:
         id:
@@ -107,9 +123,11 @@ components:
         amount:
           type: number
           format: double
+          exclusiveMinimum: 0
           example: 3000.00
         currency:
           type: string
+          enum: [XAF]
           example: XAF
         reference:
           type: string
@@ -118,8 +136,10 @@ components:
         bookedAt:
           type: string
           format: date-time
+          description: Timestamp when the movement was booked.
     LedgerPageResponse:
       type: object
+      description: Paginated ledger page, newest movements first.
       required: [entries, page, size, hasMore]
       properties:
         entries:
@@ -129,11 +149,15 @@ components:
         page:
           type: integer
           format: int32
+          minimum: 0
         size:
           type: integer
           format: int32
+          minimum: 1
+          maximum: 100
         hasMore:
           type: boolean
+          description: True when another page of movements is available.
     DocumentType:
       type: string
       enum: [CNI, DRIVER_LICENSE, VEHICLE_REGISTRATION, INSURANCE, PROFILE_PHOTO]
@@ -749,6 +773,9 @@ paths:
     post:
       tags: [Auth]
       summary: Verify an OTP for registration, login, payment, or reset.
+      description: >
+        On successful REGISTRATION OTP verification the account becomes ACTIVE and an XAF wallet is
+        auto-created (CORE-WALLET-001). The wallet is tied to the user account, not to a profile.
       operationId: verifyOtp
       security: []
       parameters:
@@ -799,6 +826,9 @@ paths:
     post:
       tags: [Auth]
       summary: Authenticate and create an access/refresh session.
+      description: >
+        Successful login also ensures an ACTIVE XAF wallet exists for the account (lazy backfill for
+        legacy ACTIVE users without a wallet row — CORE-WALLET-001).
       operationId: login
       security: []
       parameters:
@@ -1180,13 +1210,19 @@ paths:
   /api/v1/wallet:
     get:
       tags: [Wallet/Payments]
-      summary: Get the authenticated user's wallet balance and status.
+      summary: Get the authenticated account wallet balance and status (CORE-WALLET-001).
+      description: >
+        Returns the unique wallet of the authenticated user account (JWT `sub`), independent of the
+        active profile. Currency is XAF. If the account is ACTIVE but has no wallet row yet
+        (legacy account), the backend auto-provisions an ACTIVE wallet with balance 0 before
+        responding. Write operations (deposit / debit) are not exposed here; they go through
+        CORE-PAY-* later.
       operationId: getWallet
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          description: Wallet summary.
+          description: Account wallet summary (XAF, status, settled balance).
           content:
             application/json:
               schema:
@@ -1194,17 +1230,28 @@ paths:
         '401':
           $ref: '#/components/responses/Error'
         '404':
-          $ref: '#/components/responses/Error'
+          description: >
+            Wallet still missing after provisioning attempt (`WALLET_NOT_FOUND`). Unusual for an
+            ACTIVE authenticated account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/wallet/ledger:
     get:
       tags: [Wallet/Payments]
-      summary: List the authenticated user's wallet movements, newest first.
+      summary: List immutable wallet ledger movements, newest first (CORE-WALLET-001).
+      description: >
+        Paginated append-only accounting history for the authenticated account wallet. Same wallet
+        regardless of active profile. Auto-provisions a missing wallet for legacy ACTIVE accounts
+        before listing (empty entries when newly created).
       operationId: getWalletLedger
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - name: page
           in: query
           required: false
+          description: Zero-based page index.
           schema:
             type: integer
             format: int32
@@ -1213,6 +1260,7 @@ paths:
         - name: size
           in: query
           required: false
+          description: Page size (capped at 100).
           schema:
             type: integer
             format: int32
@@ -1221,7 +1269,7 @@ paths:
             default: 20
       responses:
         '200':
-          description: Paginated ledger movements.
+          description: Paginated ledger movements (immutable entries).
           content:
             application/json:
               schema:
@@ -1229,11 +1277,18 @@ paths:
         '401':
           $ref: '#/components/responses/Error'
         '404':
-          $ref: '#/components/responses/Error'
+          description: Wallet still missing after provisioning attempt (`WALLET_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/wallet/deposits:
     post:
       tags: [Wallet/Payments]
-      summary: Initiate a wallet deposit.
+      summary: Initiate a wallet deposit (CORE-PAY-001, future).
+      description: >
+        Placeholder for Mobile Money deposit initiation. Not part of CORE-WALLET-001; routed by the
+        gateway but implemented under CORE-PAY-001.
       operationId: createWalletDeposit
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1249,7 +1304,10 @@ paths:
   /api/v1/integrations/mobile-money/callback:
     post:
       tags: [Wallet/Payments]
-      summary: Receive mobile money provider callback.
+      summary: Receive mobile money provider callback (CORE-PAY-001, future).
+      description: >
+        Provider callback endpoint. Signature verification and idempotent wallet credit are covered
+        by CORE-PAY-001, not CORE-WALLET-001.
       operationId: mobileMoneyCallback
       security:
         - CallbackSignature: []
@@ -1267,7 +1325,10 @@ paths:
   /api/v1/bookings/{id}/pay:
     post:
       tags: [Wallet/Payments]
-      summary: Pay a booking from wallet or mobile money.
+      summary: Pay a booking from wallet or mobile money (CORE-PAY-002, future).
+      description: >
+        Placeholder for ride payment debit/credit orchestration. Depends on CORE-WALLET-001 ledger
+        primitives; implemented under CORE-PAY-002.
       operationId: payBooking
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
