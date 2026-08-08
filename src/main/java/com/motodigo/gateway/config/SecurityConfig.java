@@ -5,6 +5,7 @@ import java.util.Arrays;
 
 import javax.crypto.spec.SecretKeySpec;
 
+import com.motodigo.gateway.integrations.MobileMoneyCallbackFilter;
 import com.motodigo.gateway.security.GatewayJwtAuthenticationConverter;
 import com.motodigo.gateway.security.RateLimitingFilter;
 import com.motodigo.gateway.web.CorrelationIdFilter;
@@ -44,7 +45,8 @@ class SecurityConfig {
 			AuthenticationEntryPoint authenticationEntryPoint,
 			AccessDeniedHandler accessDeniedHandler,
 			GatewayJwtAuthenticationConverter jwtAuthenticationConverter,
-			RateLimitingFilter rateLimitingFilter) throws Exception {
+			RateLimitingFilter rateLimitingFilter,
+			MobileMoneyCallbackFilter mobileMoneyCallbackFilter) throws Exception {
 		http
 				.csrf(AbstractHttpConfigurer::disable)
 				.cors(Customizer.withDefaults())
@@ -66,7 +68,9 @@ class SecurityConfig {
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/password/forgot",
 								"/api/v1/auth/password/reset").permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/v1/integrations/mobile-money/callback").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/integrations/mobile-money/callback",
+								"/api/v1/integrations/mobile-money/*/callback").permitAll()
+						.requestMatchers("/__gateway/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/v1/profiles").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/v1/profiles/current").hasAuthority("PROFILE_READ")
@@ -117,6 +121,7 @@ class SecurityConfig {
 						.accessDeniedHandler(accessDeniedHandler)
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
 				.addFilterAfter(rateLimitingFilter, BearerTokenAuthenticationFilter.class)
+				.addFilterAfter(mobileMoneyCallbackFilter, RateLimitingFilter.class)
 				.headers(headers -> configureHeaders(headers, isLocalProfile(environment)));
 
 		return http.build();
@@ -125,6 +130,14 @@ class SecurityConfig {
 	@Bean
 	FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegistration(RateLimitingFilter filter) {
 		FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>(filter);
+		registration.setEnabled(false);
+		return registration;
+	}
+
+	@Bean
+	FilterRegistrationBean<MobileMoneyCallbackFilter> mobileMoneyCallbackFilterRegistration(
+			MobileMoneyCallbackFilter filter) {
+		FilterRegistrationBean<MobileMoneyCallbackFilter> registration = new FilterRegistrationBean<>(filter);
 		registration.setEnabled(false);
 		return registration;
 	}
@@ -150,7 +163,8 @@ class SecurityConfig {
 		CorsConfiguration configuration = new CorsConfiguration();
 		configuration.setAllowedOrigins(properties.cors().allowedOrigins());
 		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-		configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", CorrelationIdFilter.HEADER_NAME));
+		configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", CorrelationIdFilter.HEADER_NAME,
+				"X-Signature", "Idempotency-Key", "X-Provider"));
 		configuration.setExposedHeaders(Arrays.asList(CorrelationIdFilter.HEADER_NAME));
 		configuration.setMaxAge(3600L);
 

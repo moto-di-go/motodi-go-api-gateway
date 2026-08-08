@@ -64,6 +64,7 @@ class MotodiGoApiGatewayApplicationTests {
 		registry.add("motodigo.gateway.auth.issuer-url", () -> TEST_ISSUER);
 		registry.add("motodigo.gateway.auth.audience", () -> TEST_AUDIENCE);
 		registry.add("motodigo.gateway.rate-limit.enabled", () -> "false");
+		registry.add("motodigo.gateway.integrations.mobile-money.enabled", () -> "false");
 		registry.add("management.health.redis.enabled", () -> "false");
 	}
 
@@ -620,6 +621,9 @@ class MotodiGoApiGatewayApplicationTests {
 				"/api/v1/wallet/ledger",
 				"/api/v1/wallet/deposits",
 				"/api/v1/integrations/mobile-money/callback",
+				"/api/v1/integrations/mobile-money/mtn/callback",
+				"/api/v1/integrations/mobile-money/orange/callback",
+				"/api/v1/integrations/mobile-money/aggregator/callback",
 				"/api/v1/bookings/{id}/pay",
 				"/api/v1/nfc/tokens",
 				"/api/v1/offline/sync",

@@ -15,7 +15,7 @@ import org.springframework.web.servlet.LocaleResolver;
 import com.motodigo.gateway.web.CorrelationIdFilter;
 
 @Component
-class GatewayErrorWriter {
+public class GatewayErrorWriter {
 
 	private final ObjectMapper objectMapper;
 	private final MessageSource messageSource;
@@ -27,7 +27,7 @@ class GatewayErrorWriter {
 		this.localeResolver = localeResolver;
 	}
 
-	void write(HttpServletRequest request, HttpServletResponse response, GatewayErrorCode errorCode) throws IOException {
+	public void write(HttpServletRequest request, HttpServletResponse response, GatewayErrorCode errorCode) throws IOException {
 		if (response.isCommitted()) {
 			return;
 		}

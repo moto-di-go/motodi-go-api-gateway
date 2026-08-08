@@ -1304,15 +1304,27 @@ paths:
   /api/v1/integrations/mobile-money/callback:
     post:
       tags: [Wallet/Payments]
-      summary: Receive mobile money provider callback (CORE-PAY-001, future).
+      summary: Receive mobile money provider callback (legacy alias).
       description: >
-        Provider callback endpoint. Signature verification and idempotent wallet credit are covered
-        by CORE-PAY-001, not CORE-WALLET-001.
+        Legacy alias for aggregator callbacks. Prefer provider-specific paths.
+        GATE-INTEGRATIONS-001 verifies X-Signature, origin allowlist and edge idempotency
+        before forwarding once to backend-core. Wallet credit remains CORE-PAY-001.
       operationId: mobileMoneyCallback
       security:
         - CallbackSignature: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Provider
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [mtn, orange, aggregator]
       requestBody:
         required: true
         content:
@@ -1322,6 +1334,94 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Accepted'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/integrations/mobile-money/mtn/callback:
+    post:
+      tags: [Wallet/Payments]
+      summary: Receive MTN MoMo callback (GATE-INTEGRATIONS-001).
+      description: >
+        Edge signature, origin and idempotency checks run in the gateway, then the payload is
+        forwarded once to backend-core for CORE-PAY-001 processing.
+      operationId: mobileMoneyMtnCallback
+      security:
+        - CallbackSignature: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/integrations/mobile-money/orange/callback:
+    post:
+      tags: [Wallet/Payments]
+      summary: Receive Orange Money callback (GATE-INTEGRATIONS-001).
+      operationId: mobileMoneyOrangeCallback
+      security:
+        - CallbackSignature: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/integrations/mobile-money/aggregator/callback:
+    post:
+      tags: [Wallet/Payments]
+      summary: Receive payment aggregator callback (GATE-INTEGRATIONS-001).
+      operationId: mobileMoneyAggregatorCallback
+      security:
+        - CallbackSignature: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /api/v1/bookings/{id}/pay:
     post:
       tags: [Wallet/Payments]

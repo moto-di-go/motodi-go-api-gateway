@@ -1,7 +1,9 @@
 package com.motodigo.gateway.config;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -24,7 +26,9 @@ public record GatewayProperties(
 		@Valid @NotNull
 		Auth auth,
 		@Valid @NotNull
-		RateLimit rateLimit) {
+		RateLimit rateLimit,
+		@Valid @NotNull
+		Integrations integrations) {
 
 	public GatewayProperties {
 		if (cors == null) {
@@ -35,6 +39,9 @@ public record GatewayProperties(
 		}
 		if (rateLimit == null) {
 			rateLimit = RateLimit.defaults();
+		}
+		if (integrations == null) {
+			integrations = Integrations.defaults();
 		}
 	}
 
@@ -104,5 +111,68 @@ public record GatewayProperties(
 			long refillTokens,
 			@Min(1)
 			long refillPeriodSeconds) {
+	}
+
+	public record Integrations(@Valid @NotNull MobileMoney mobileMoney) {
+		public Integrations {
+			if (mobileMoney == null) {
+				mobileMoney = MobileMoney.defaults();
+			}
+		}
+
+		static Integrations defaults() {
+			return new Integrations(MobileMoney.defaults());
+		}
+	}
+
+	public record MobileMoney(
+			boolean enabled,
+			@NotNull
+			Duration idempotencyTtl,
+			@NotNull
+			Duration pendingTtl,
+			@Valid @NotNull
+			Map<String, Provider> providers) {
+		public MobileMoney {
+			if (idempotencyTtl == null) {
+				idempotencyTtl = Duration.ofHours(48);
+			}
+			if (pendingTtl == null) {
+				pendingTtl = Duration.ofSeconds(60);
+			}
+			if (providers == null || providers.isEmpty()) {
+				providers = defaultProviders();
+			}
+		}
+
+		static MobileMoney defaults() {
+			return new MobileMoney(true, Duration.ofHours(48), Duration.ofSeconds(60), defaultProviders());
+		}
+
+		private static Map<String, Provider> defaultProviders() {
+			return Map.of(
+					"mtn", new Provider("change-me-mtn-callback-hmac-secret", List.of()),
+					"orange", new Provider("change-me-orange-callback-hmac-secret", List.of()),
+					"aggregator", new Provider("change-me-aggregator-callback-hmac-secret", List.of()));
+		}
+
+		public Provider provider(String key) {
+			return providers.get(key);
+		}
+	}
+
+	public record Provider(
+			@NotBlank
+			String hmacSecret,
+			@NotNull
+			List<String> allowedSourceIps) {
+		public Provider {
+			if (hmacSecret == null || hmacSecret.isBlank()) {
+				hmacSecret = "change-me-callback-hmac-secret";
+			}
+			if (allowedSourceIps == null) {
+				allowedSourceIps = List.of();
+			}
+		}
 	}
 }
