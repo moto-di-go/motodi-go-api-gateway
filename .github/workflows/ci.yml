@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -46,3 +48,4 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
