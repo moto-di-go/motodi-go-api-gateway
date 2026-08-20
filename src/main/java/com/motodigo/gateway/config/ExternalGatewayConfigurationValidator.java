@@ -1,6 +1,7 @@
 package com.motodigo.gateway.config;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -12,6 +13,11 @@ class ExternalGatewayConfigurationValidator implements SmartInitializingSingleto
 
 	private static final Set<String> LOCAL_PROFILES = Set.of("local", "test");
 	private static final String DEFAULT_JWT_SECRET = "change-me-to-at-least-32-bytes-for-hs256";
+	private static final Set<String> DEFAULT_CALLBACK_SECRETS = Set.of(
+			"change-me-mtn-callback-hmac-secret",
+			"change-me-orange-callback-hmac-secret",
+			"change-me-aggregator-callback-hmac-secret",
+			"change-me-callback-hmac-secret");
 
 	private final Environment environment;
 	private final GatewayProperties properties;
@@ -32,6 +38,16 @@ class ExternalGatewayConfigurationValidator implements SmartInitializingSingleto
 			}
 		}
 		requireNonDefault("JWT_SECRET", this.properties.auth().jwtSecret(), DEFAULT_JWT_SECRET);
+		if (this.properties.integrations().mobileMoney().enabled()) {
+			for (Map.Entry<String, GatewayProperties.Provider> entry : this.properties.integrations().mobileMoney()
+					.providers().entrySet()) {
+				String secret = entry.getValue().hmacSecret();
+				if (secret == null || secret.isBlank() || DEFAULT_CALLBACK_SECRETS.contains(secret)) {
+					throw new IllegalStateException(
+							"Callback HMAC secret for provider '" + entry.getKey() + "' must be configured outside local/test profiles");
+				}
+			}
+		}
 	}
 
 	private boolean isLocalOrTest() {

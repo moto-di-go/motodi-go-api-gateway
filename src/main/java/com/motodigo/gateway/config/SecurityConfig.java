@@ -5,6 +5,7 @@ import java.util.Arrays;
 
 import javax.crypto.spec.SecretKeySpec;
 
+import com.motodigo.gateway.integrations.MobileMoneyCallbackFilter;
 import com.motodigo.gateway.security.GatewayJwtAuthenticationConverter;
 import com.motodigo.gateway.security.RateLimitingFilter;
 import com.motodigo.gateway.web.CorrelationIdFilter;
@@ -44,7 +45,8 @@ class SecurityConfig {
 			AuthenticationEntryPoint authenticationEntryPoint,
 			AccessDeniedHandler accessDeniedHandler,
 			GatewayJwtAuthenticationConverter jwtAuthenticationConverter,
-			RateLimitingFilter rateLimitingFilter) throws Exception {
+			RateLimitingFilter rateLimitingFilter,
+			MobileMoneyCallbackFilter mobileMoneyCallbackFilter) throws Exception {
 		http
 				.csrf(AbstractHttpConfigurer::disable)
 				.cors(Customizer.withDefaults())
@@ -66,7 +68,9 @@ class SecurityConfig {
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/password/forgot",
 								"/api/v1/auth/password/reset").permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/v1/integrations/mobile-money/callback").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/integrations/mobile-money/callback",
+								"/api/v1/integrations/mobile-money/*/callback").permitAll()
+						.requestMatchers("/__gateway/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/v1/profiles").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/v1/profiles/current").hasAuthority("PROFILE_READ")
@@ -76,9 +80,28 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/kyc/documents").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/kyc/documents").authenticated()
 						.requestMatchers(HttpMethod.PUT, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
-						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/drivers/availability").hasAuthority("MOTOTAXI_SET_AVAILABILITY")
+						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby",
+								"/api/v1/urban/places/popular",
+								"/api/v1/urban/places/suggest",
+								"/api/v1/urban/geocode",
+								"/api/v1/urban/reverse").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/urban/route/preview",
+								"/api/v1/urban/route/alternatives",
+								"/api/v1/urban/route/match").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/gis/layers").authenticated()
+						.requestMatchers("/api/v1/realtime/**").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/intercity/announcements/mine").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/intercity/announcements/*").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/close").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/cancel").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/bookings").hasAuthority("PASSENGER_BOOK_RIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/intercity/announcements/*/bookings").authenticated()
+						.requestMatchers(HttpMethod.GET, "/api/v1/bookings/mine", "/api/v1/bookings/*").authenticated()
+						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/confirm").hasAuthority("INTERCITY_BOOKING_CONFIRM")
+						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/cancel").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
 						.requestMatchers(HttpMethod.GET,
 								"/api/v1/admin/kyc/pending",
@@ -93,8 +116,13 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/overview", "/api/v1/admin/ops/bookings").hasAuthority("OPERATIONS_READ")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_WRITE")
-						.requestMatchers(HttpMethod.GET, "/api/v1/admin/gis/layers").hasAuthority("GIS_READ")
-						.requestMatchers(HttpMethod.PUT, "/api/v1/admin/gis/layers").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/admin/pricing/rules/*").hasAuthority("PRICING_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/gis/layers", "/api/v1/admin/gis/photon")
+								.hasAuthority("GIS_READ")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/gis/layers").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/gis/photon/update").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.PUT, "/api/v1/admin/gis/layers", "/api/v1/admin/gis/layers/*")
+								.hasAuthority("GIS_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/kpi", "/api/v1/admin/kpi/export.csv").hasAuthority("KPI_READ")
 						.requestMatchers("/api/v1/profiles/**",
 								"/api/v1/pricing/**",
@@ -117,6 +145,7 @@ class SecurityConfig {
 						.accessDeniedHandler(accessDeniedHandler)
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
 				.addFilterAfter(rateLimitingFilter, BearerTokenAuthenticationFilter.class)
+				.addFilterAfter(mobileMoneyCallbackFilter, RateLimitingFilter.class)
 				.headers(headers -> configureHeaders(headers, isLocalProfile(environment)));
 
 		return http.build();
@@ -125,6 +154,14 @@ class SecurityConfig {
 	@Bean
 	FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegistration(RateLimitingFilter filter) {
 		FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>(filter);
+		registration.setEnabled(false);
+		return registration;
+	}
+
+	@Bean
+	FilterRegistrationBean<MobileMoneyCallbackFilter> mobileMoneyCallbackFilterRegistration(
+			MobileMoneyCallbackFilter filter) {
+		FilterRegistrationBean<MobileMoneyCallbackFilter> registration = new FilterRegistrationBean<>(filter);
 		registration.setEnabled(false);
 		return registration;
 	}
@@ -150,7 +187,8 @@ class SecurityConfig {
 		CorsConfiguration configuration = new CorsConfiguration();
 		configuration.setAllowedOrigins(properties.cors().allowedOrigins());
 		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-		configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", CorrelationIdFilter.HEADER_NAME));
+		configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", CorrelationIdFilter.HEADER_NAME,
+				"X-Signature", "Idempotency-Key", "X-Provider"));
 		configuration.setExposedHeaders(Arrays.asList(CorrelationIdFilter.HEADER_NAME));
 		configuration.setMaxAge(3600L);
 

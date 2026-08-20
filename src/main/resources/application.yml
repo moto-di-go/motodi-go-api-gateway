@@ -1,3 +1,11 @@
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
 spring:
   application:
     name: motodi-go-api-gateway
@@ -6,14 +14,10 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       timeout: ${REDIS_TIMEOUT:2s}
-
-server:
-  port: ${SERVER_PORT:8080}
-  error:
-    include-message: never
-    include-binding-errors: never
-    include-stacktrace: never
-    include-exception: false
+  http:
+    client:
+      connect-timeout: ${GATEWAY_HTTP_CONNECT_TIMEOUT:2s}
+      read-timeout: ${GATEWAY_HTTP_READ_TIMEOUT:6s}
 
 management:
   endpoints:
@@ -31,6 +35,30 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      backendCore:
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      backendAi:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 3
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 2
+  timelimiter:
+    instances:
+      backendCore:
+        timeoutDuration: ${GATEWAY_CORE_TIMEOUT:5s}
+        cancelRunningFuture: true
+      backendAi:
+        timeoutDuration: ${GATEWAY_AI_TIMEOUT:3s}
+        cancelRunningFuture: true
 
 motodigo:
   gateway:
@@ -60,3 +88,18 @@ motodigo:
         capacity: ${GATEWAY_RATE_LIMIT_CALLBACK_CAPACITY:60}
         refill-tokens: ${GATEWAY_RATE_LIMIT_CALLBACK_REFILL_TOKENS:60}
         refill-period-seconds: ${GATEWAY_RATE_LIMIT_CALLBACK_REFILL_PERIOD_SECONDS:60}
+    integrations:
+      mobile-money:
+        enabled: ${GATEWAY_MOBILE_MONEY_CALLBACK_ENABLED:true}
+        idempotency-ttl: ${GATEWAY_CALLBACK_IDEMPOTENCY_TTL:48h}
+        pending-ttl: ${GATEWAY_CALLBACK_PENDING_TTL:60s}
+        providers:
+          mtn:
+            hmac-secret: ${MTN_CALLBACK_HMAC_SECRET:change-me-mtn-callback-hmac-secret}
+            allowed-source-ips: []
+          orange:
+            hmac-secret: ${ORANGE_CALLBACK_HMAC_SECRET:change-me-orange-callback-hmac-secret}
+            allowed-source-ips: []
+          aggregator:
+            hmac-secret: ${AGGREGATOR_CALLBACK_HMAC_SECRET:change-me-aggregator-callback-hmac-secret}
+            allowed-source-ips: []
