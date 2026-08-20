@@ -80,9 +80,28 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/kyc/documents").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/kyc/documents").authenticated()
 						.requestMatchers(HttpMethod.PUT, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
-						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/drivers/availability").hasAuthority("MOTOTAXI_SET_AVAILABILITY")
+						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby",
+								"/api/v1/urban/places/popular",
+								"/api/v1/urban/places/suggest",
+								"/api/v1/urban/geocode",
+								"/api/v1/urban/reverse").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/urban/route/preview",
+								"/api/v1/urban/route/alternatives",
+								"/api/v1/urban/route/match").hasAuthority("PASSENGER_SEARCH_RIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/gis/layers").authenticated()
+						.requestMatchers("/api/v1/realtime/**").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/intercity/announcements/mine").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/intercity/announcements/*").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/close").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/cancel").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/bookings").hasAuthority("PASSENGER_BOOK_RIDE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/intercity/announcements/*/bookings").authenticated()
+						.requestMatchers(HttpMethod.GET, "/api/v1/bookings/mine", "/api/v1/bookings/*").authenticated()
+						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/confirm").hasAuthority("INTERCITY_BOOKING_CONFIRM")
+						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/cancel").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
 						.requestMatchers(HttpMethod.GET,
 								"/api/v1/admin/kyc/pending",
@@ -97,8 +116,13 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/overview", "/api/v1/admin/ops/bookings").hasAuthority("OPERATIONS_READ")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_WRITE")
-						.requestMatchers(HttpMethod.GET, "/api/v1/admin/gis/layers").hasAuthority("GIS_READ")
-						.requestMatchers(HttpMethod.PUT, "/api/v1/admin/gis/layers").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/admin/pricing/rules/*").hasAuthority("PRICING_WRITE")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/gis/layers", "/api/v1/admin/gis/photon")
+								.hasAuthority("GIS_READ")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/gis/layers").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.POST, "/api/v1/admin/gis/photon/update").hasAuthority("GIS_WRITE")
+						.requestMatchers(HttpMethod.PUT, "/api/v1/admin/gis/layers", "/api/v1/admin/gis/layers/*")
+								.hasAuthority("GIS_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/kpi", "/api/v1/admin/kpi/export.csv").hasAuthority("KPI_READ")
 						.requestMatchers("/api/v1/profiles/**",
 								"/api/v1/pricing/**",

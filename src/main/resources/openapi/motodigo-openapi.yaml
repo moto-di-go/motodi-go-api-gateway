@@ -11,12 +11,20 @@ tags:
   - name: KYC
   - name: SIG
   - name: Intercity
+    description: >
+      CORE-INTER-001 (implemented): intercity announcement CRUD and multicriteria search with
+      deterministic widening suggestions when no results match.
+      CORE-BOOK-001 (implemented): passenger subscription (`PENDING`), transporter/agency confirmation
+      with transactional seat locks (`PENDING_PAYMENT`), status visibility for both parties,
+      cancellation rules, and automatic expiration of unpaid/unconfirmed bookings.
+      Ride payment after lock is CORE-PAY-002 (future): `POST /api/v1/bookings/{id}/pay`.
   - name: AI
   - name: Wallet/Payments
     description: >
       CORE-WALLET-001 (implemented): account-scoped wallet balance and immutable ledger reads.
       The wallet belongs to the user account (JWT subject), not the active profile.
-      CORE-PAY-001/002 (future): Mobile Money deposits, callbacks and ride payments.
+      CORE-PAY-001 (implemented): Mobile Money deposit initiation, signed callback processing and
+      admin reconciliation by external reference. CORE-PAY-002 (future): ride payments.
   - name: Offline/NFC
   - name: Trips
   - name: Support
@@ -158,9 +166,350 @@ components:
         hasMore:
           type: boolean
           description: True when another page of movements is available.
+    AnnouncementStatus:
+      type: string
+      description: Lifecycle status of an intercity announcement.
+      enum: [DRAFT, PUBLISHED, FULL, CLOSED, CANCELLED]
+    AnnouncementSort:
+      type: string
+      description: >
+        Search sort key. proximity requires nearLat/nearLon and a departure geometry; otherwise
+        the API falls back to departureTime.
+      enum: [price, departureTime, proximity]
+    GeoPointRequest:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+    CreateIntercityAnnouncementRequest:
+      type: object
+      description: >
+        Publish an intercity announcement (CORE-INTER-001). Created as PUBLISHED with
+        remainingSeats initialized to totalSeats. Departure datetime is interpreted in Africa/Douala
+        and must be strictly in the future.
+      required: [departureCity, destinationCity, departureDate, departureTime, priceFcfa, totalSeats, vehicleId]
+      properties:
+        departureCity:
+          type: string
+          maxLength: 120
+          example: Douala
+        destinationCity:
+          type: string
+          maxLength: 120
+          example: Yaounde
+        departureQuarter:
+          type: string
+          maxLength: 120
+          nullable: true
+          example: Bonanjo
+        departurePoint:
+          $ref: '#/components/schemas/GeoPointRequest'
+        destinationPoint:
+          $ref: '#/components/schemas/GeoPointRequest'
+        departureDate:
+          type: string
+          format: date
+          example: "2026-08-20"
+        departureTime:
+          type: string
+          format: time
+          example: "08:30:00"
+        priceFcfa:
+          type: number
+          format: double
+          minimum: 0
+          example: 9000
+        totalSeats:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+          example: 14
+        vehicleId:
+          type: string
+          format: uuid
+        instructions:
+          type: string
+          maxLength: 2000
+          nullable: true
+    UpdateIntercityAnnouncementRequest:
+      type: object
+      description: >
+        Partial update of a PUBLISHED or DRAFT announcement owned by the active profile.
+        Refused when bookings already exist or status is CLOSED/CANCELLED/FULL.
+      properties:
+        departureCity:
+          type: string
+          maxLength: 120
+        destinationCity:
+          type: string
+          maxLength: 120
+        departureQuarter:
+          type: string
+          maxLength: 120
+          nullable: true
+        departurePoint:
+          $ref: '#/components/schemas/GeoPointRequest'
+        destinationPoint:
+          $ref: '#/components/schemas/GeoPointRequest'
+        departureDate:
+          type: string
+          format: date
+        departureTime:
+          type: string
+          format: time
+        priceFcfa:
+          type: number
+          format: double
+          minimum: 0
+        totalSeats:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+        vehicleId:
+          type: string
+          format: uuid
+        instructions:
+          type: string
+          maxLength: 2000
+          nullable: true
+    IntercityAnnouncementResponse:
+      type: object
+      required:
+        - id
+        - publisherProfileId
+        - vehicleId
+        - departureCity
+        - destinationCity
+        - departureDate
+        - departureTime
+        - priceFcfa
+        - totalSeats
+        - remainingSeats
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        publisherProfileId:
+          type: string
+          format: uuid
+        vehicleId:
+          type: string
+          format: uuid
+          nullable: true
+        departureCity:
+          type: string
+        destinationCity:
+          type: string
+        departureQuarter:
+          type: string
+          nullable: true
+        departureDate:
+          type: string
+          format: date
+        departureTime:
+          type: string
+          format: time
+        priceFcfa:
+          type: number
+          format: double
+        totalSeats:
+          type: integer
+          format: int32
+        remainingSeats:
+          type: integer
+          format: int32
+          description: >
+            Seats still available. Decremented atomically when the announcement owner confirms a
+            booking (SeatLock). Restored on cancel/expire of a non-consumed lock. Reaches 0 with
+            status FULL when the trip is sold out.
+        instructions:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/AnnouncementStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BookingStatus:
+      type: string
+      description: >
+        Lifecycle of an intercity booking (CORE-BOOK-001). Typical happy path:
+        `PENDING` (subscription, awaiting owner confirm) → `PENDING_PAYMENT` (seats locked) →
+        `PAID` (CORE-PAY-002). Terminal: `CANCELLED`, `EXPIRED`. `CONFIRMED` is reserved for
+        seat-held states without an immediate payment window.
+      enum: [PENDING, CONFIRMED, CANCELLED, EXPIRED, PAID, PENDING_PAYMENT]
+    CreateBookingRequest:
+      type: object
+      description: Passenger subscription body. Does not lock seats yet.
+      required: [seatsRequested]
+      properties:
+        seatsRequested:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+          example: 1
+          description: Number of seats requested (must be <= announcement remainingSeats).
+    CancelBookingRequest:
+      type: object
+      description: Cancellation motive required by business rules.
+      required: [cancellationReason]
+      properties:
+        cancellationReason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          example: Changement de plan
+    BookingResponse:
+      type: object
+      description: >
+        Intercity booking / subscription (CORE-BOOK-001). Readable by the passenger who created it
+        and by the announcement owner (transporter/agency). `expiresAt` is the confirmation TTL
+        while `PENDING`, then the payment TTL while `PENDING_PAYMENT`.
+      required:
+        - id
+        - announcementId
+        - passengerProfileId
+        - status
+        - seatsRequested
+        - requestedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        announcementId:
+          type: string
+          format: uuid
+        passengerProfileId:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional linked trip id (populated by later tracking/payment flows).
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        seatsRequested:
+          type: integer
+          format: int32
+        requestedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when the owner confirms and seats are locked.
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Deadline for owner confirmation (`PENDING`) or for payment (`PENDING_PAYMENT`).
+            Past this instant a scheduler marks the booking `EXPIRED` and releases any SeatLock.
+        cancellationReason:
+          type: string
+          nullable: true
+    BookingPageResponse:
+      type: object
+      description: Paginated booking list (passenger mine or announcement owner list).
+      required: [items, page, size, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingResponse'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        hasMore:
+          type: boolean
+    WideningSuggestion:
+      type: object
+      description: Deterministic suggestion to broaden search criteria when the result set is empty.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [RELAX_DATE, RAISE_MAX_PRICE, DROP_QUARTER, DROP_TIME_RANGE, INCLUDE_FULL]
+        message:
+          type: string
+          example: Essayer la veille ou le lendemain.
+        suggestedQuery:
+          type: object
+          additionalProperties: true
+          description: Query-parameter overrides the client can apply.
+    IntercityAnnouncementSearchPageResponse:
+      type: object
+      required: [items, page, size, hasMore, wideningSuggestions]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        hasMore:
+          type: boolean
+        wideningSuggestions:
+          type: array
+          description: Populated only when items is empty; otherwise an empty array.
+          items:
+            $ref: '#/components/schemas/WideningSuggestion'
+    IntercityAnnouncementMinePageResponse:
+      type: object
+      required: [items, page, size, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        hasMore:
+          type: boolean
     DocumentType:
       type: string
-      enum: [CNI, DRIVER_LICENSE, VEHICLE_REGISTRATION, INSURANCE, PROFILE_PHOTO]
+      enum: [CNI, DRIVER_LICENSE, VEHICLE_REGISTRATION, INSURANCE, PROFILE_PHOTO, AGENCY_DOCUMENT, VEHICLE_PHOTO]
     DocumentStatus:
       type: string
       enum: [UPLOADED, ENCRYPTED, PENDING_REVIEW, ACCEPTED, REJECTED, EXPIRED]
@@ -596,6 +945,13 @@ components:
         companyName:
           type: string
           maxLength: 160
+        vehicleId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Primary vehicle linked to the transporter profile. Set automatically when uploading
+            VEHICLE_PHOTO (provided vehicleId, existing primary vehicle, or newly created vehicle).
     AgencyProfileDetails:
       type: object
       properties:
@@ -694,16 +1050,348 @@ components:
           enum: [MTN_MOMO, ORANGE_MONEY, AGGREGATOR, WALLET, NFC]
         phoneNumber:
           type: string
+    DepositRequest:
+      type: object
+      description: Mobile Money wallet deposit initiation (CORE-PAY-001).
+      required: [amount, currency, provider, phoneNumber]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 1
+          example: 5000.00
+        currency:
+          type: string
+          enum: [XAF]
+        provider:
+          type: string
+          enum: [MTN_MOMO, ORANGE_MONEY, AGGREGATOR]
+        phoneNumber:
+          type: string
+          pattern: '^\+237[6-9]\d{8}$'
+          example: '+237699001122'
+    DepositResponse:
+      type: object
+      description: Mobile Money deposit transaction state.
+      required: [id, status, amount, currency, provider, initiatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [INITIATED, PENDING_CALLBACK, CONFIRMED, FAILED, EXPIRED, REFUNDED]
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+          enum: [XAF]
+        provider:
+          type: string
+          enum: [MTN_MOMO, ORANGE_MONEY, AGGREGATOR]
+        payerPhone:
+          type: string
+          nullable: true
+        externalReference:
+          type: string
+          nullable: true
+          description: Provider reference used for reconciliation.
+        failureReason:
+          type: string
+          nullable: true
+        initiatedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+    MobileMoneyCallbackRequest:
+      type: object
+      description: >
+        Normalized callback payload forwarded by the gateway after HMAC/origin/idempotency checks.
+      required: [externalReference, status]
+      properties:
+        externalReference:
+          type: string
+          example: MTN-20260702-8A91
+        status:
+          type: string
+          enum: [SUCCESS, SUCCESSFUL, CONFIRMED, FAILED, FAILURE, REJECTED, EXPIRED, TIMEOUT]
+        failureReason:
+          type: string
+          nullable: true
+    AdminPaymentTransactionPageResponse:
+      type: object
+      required: [transactions, page, size, hasMore]
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositResponse'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+        hasMore:
+          type: boolean
     PricingEstimateRequest:
       type: object
-      required: [origin, destination]
+      required: [originLat, originLon, destinationLat, destinationLon]
       properties:
+        originLat:
+          type: number
+          format: double
+        originLon:
+          type: number
+          format: double
+        destinationLat:
+          type: number
+          format: double
+        destinationLon:
+          type: number
+          format: double
         origin:
           $ref: '#/components/schemas/GeoPoint'
         destination:
           $ref: '#/components/schemas/GeoPoint'
         serviceType:
           type: string
+    PricingBreakdown:
+      type: object
+      required: [baseFcfa, distanceKm, pricePerKmFcfa, distanceAmountFcfa, nightMultiplier, weatherMultiplier, nightWeatherApplicable, roundingFcfa, totalFcfa]
+      properties:
+        baseFcfa:
+          type: number
+        distanceKm:
+          type: number
+          format: double
+        pricePerKmFcfa:
+          type: number
+        distanceAmountFcfa:
+          type: number
+        nightMultiplier:
+          type: number
+        weatherMultiplier:
+          type: number
+        nightWeatherApplicable:
+          type: boolean
+        roundingFcfa:
+          type: number
+        totalFcfa:
+          type: number
+    PricingRouteOption:
+      type: object
+      required: [kind, label, degraded, distanceKm, durationMinutes, amountFcfa, polyline]
+      properties:
+        kind:
+          type: string
+          enum: [RECOMMENDED, FASTEST, CHEAPEST]
+        label:
+          type: string
+        degraded:
+          type: boolean
+        distanceKm:
+          type: number
+          format: double
+        durationMinutes:
+          type: integer
+          format: int32
+        amountFcfa:
+          type: number
+        polyline:
+          type: string
+          description: WKT LINESTRING
+        reason:
+          type: string
+          nullable: true
+    PricingEstimateResponse:
+      type: object
+      required: [amountFcfa, distanceKm, durationMinutes, polyline, options, breakdown]
+      properties:
+        id:
+          type: string
+          format: uuid
+        routeId:
+          type: string
+          format: uuid
+        amountFcfa:
+          type: number
+        distanceKm:
+          type: number
+          format: double
+        durationMinutes:
+          type: integer
+          format: int32
+        appliedRulesTrace:
+          type: string
+        polyline:
+          type: string
+        status:
+          type: string
+        alternatives:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenericObject'
+        calculatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        breakdown:
+          $ref: '#/components/schemas/PricingBreakdown'
+        options:
+          type: array
+          description: >
+            Distinct route variants (1–3). Duplicate geometries are collapsed.
+            Primary top-level fields come from RECOMMENDED when present, otherwise FASTEST.
+          items:
+            $ref: '#/components/schemas/PricingRouteOption'
+    UrbanPlaceResponse:
+      type: object
+      required: [id, label, lat, lon, kind]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+        kind:
+          type: string
+          enum: [NEIGHBORHOOD, POI, LANDMARK, STREET, LOCALITY, CITY]
+        subtitle:
+          type: string
+        source:
+          type: string
+          enum: [LOCAL, PHOTON]
+        distanceKm:
+          type: number
+          format: double
+    RoutePreviewRequest:
+      type: object
+      required: [originLat, originLon, destinationLat, destinationLon]
+      properties:
+        originLat:
+          type: number
+          format: double
+        originLon:
+          type: number
+          format: double
+        destinationLat:
+          type: number
+          format: double
+        destinationLon:
+          type: number
+          format: double
+        costing:
+          type: string
+          description: Valhalla costing model. Use auto for intercity cars; motorcycle remains the urban default.
+          enum: [auto, motorcycle, bicycle, pedestrian]
+    RoutePreviewResponse:
+      type: object
+      properties:
+        routeId:
+          type: string
+          format: uuid
+        engine:
+          type: string
+            enum: [VALHALLA, LOCAL, DIRECT]
+        polyline:
+          type: string
+        distanceKm:
+          type: number
+          format: double
+        durationMinutes:
+          type: integer
+        status:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingRouteOption'
+        alternatives:
+          type: array
+          items:
+            type: object
+    RouteMatchRequest:
+      type: object
+      required: [points]
+      properties:
+        points:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [lat, lon]
+            properties:
+              lat:
+                type: number
+                format: double
+              lon:
+                type: number
+                format: double
+    RouteMatchResponse:
+      type: object
+      properties:
+        polyline:
+          type: string
+        distanceKm:
+          type: number
+          format: double
+        durationMinutes:
+          type: integer
+        engine:
+          type: string
+    TrafficLayerResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [CONGESTION, ROADWORK, DAMAGED_ROAD, ALTERNATIVE_ROUTE]
+          description: >
+            DAMAGED_ROAD is the closest mapping for Figma "zones à éviter".
+            No separate avoid-zone type is introduced.
+        label:
+          type: string
+        geometryWkt:
+          type: string
+        geoJson:
+          type: string
+        severity:
+          type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+          nullable: true
+        active:
+          type: boolean
+        source:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+          description: Freshness timestamp derived from validFrom.
+        fresh:
+          type: boolean
+          description: True when the layer is active and currently inside validFrom/validTo.
     GeoPoint:
       type: object
       required: [lat, lon]
@@ -1082,6 +1770,9 @@ paths:
                 vehicleId:
                   type: string
                   format: uuid
+                  description: >
+                    Optional owned vehicle id. For TRANSPORTER VEHICLE_PHOTO uploads, when omitted
+                    the API reuses the profile primary vehicle or creates one and links it.
       responses:
         '201':
           description: Uploaded encrypted document metadata.
@@ -1095,6 +1786,32 @@ paths:
           $ref: '#/components/responses/Error'
         '403':
           $ref: '#/components/responses/Error'
+  /api/v1/vehicles/mine:
+    get:
+      tags: [Intercity]
+      summary: List vehicles owned by the active transporter or agency profile.
+      operationId: listMyVehicles
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/vehicles/{id}/photo:
+    get:
+      tags: [Intercity]
+      summary: Download a vehicle photo.
+      operationId: getVehiclePhoto
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
   /api/v1/drivers/position:
     put:
       tags: [SIG]
@@ -1111,6 +1828,60 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+    get:
+      tags: [SIG]
+      summary: Read the last published driver position.
+      operationId: getDriverPosition
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/drivers/availability:
+    patch:
+      tags: [SIG]
+      summary: Update mototaxi availability and GPS consent.
+      operationId: updateDriverAvailability
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/realtime/sse:
+    get:
+      tags: [SIG]
+      summary: Subscribe to GPS realtime events via SSE.
+      operationId: subscribeRealtimeSse
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/gis/layers:
+    get:
+      tags: [SIG]
+      summary: List active traffic layers for mobile maps.
+      description: >
+        Existing overlay source (CONGESTION, ROADWORK, DAMAGED_ROAD, ALTERNATIVE_ROUTE).
+        DAMAGED_ROAD maps Figma "zones à éviter". Includes updatedAt/fresh from validFrom/validTo.
+      operationId: listActiveGisLayers
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Active traffic layers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrafficLayerResponse'
   /api/v1/urban/drivers/nearby:
     get:
       tags: [SIG]
@@ -1130,13 +1901,236 @@ paths:
           schema:
             type: number
             format: double
+        - name: radiusKm
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: destLat
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: destLon
+          in: query
+          schema:
+            type: number
+            format: double
       responses:
         '200':
           $ref: '#/components/responses/Accepted'
+  /api/v1/urban/places/popular:
+    get:
+      tags: [SIG]
+      summary: List popular Yaoundé neighborhoods (seed).
+      operationId: listPopularUrbanPlaces
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Seed neighborhoods inside the Yaoundé MVP area.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UrbanPlaceResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/urban/places/suggest:
+    get:
+      tags: [SIG]
+      summary: Search-as-you-type merging MotodiGo places with Photon OSM results.
+      operationId: suggestUrbanPlaces
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: lat
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+        - name: lon
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+        - name: kind
+          in: query
+          required: false
+          description: CITY for intercity town autocomplete; omit for urban Yaoundé places.
+          schema:
+            type: string
+            enum: [CITY, NEIGHBORHOOD, POI, LANDMARK]
+      responses:
+        '200':
+          description: Ranked places, MotodiGo hubs first then Photon.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UrbanPlaceResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/urban/geocode:
+    get:
+      tags: [SIG]
+      summary: Prefix/fuzzy geocode against the Yaoundé place seed.
+      operationId: geocodeUrbanPlace
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: lat
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+        - name: lon
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+        - name: kind
+          in: query
+          required: false
+          description: CITY for intercity town autocomplete; omit for urban Yaoundé places.
+          schema:
+            type: string
+            enum: [CITY, NEIGHBORHOOD, POI, LANDMARK]
+      responses:
+        '200':
+          description: Matching seed places (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UrbanPlaceResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/urban/reverse:
+    get:
+      tags: [SIG]
+      summary: Reverse-geocode to the nearest Yaoundé seed place.
+      operationId: reverseGeocodeUrbanPlace
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+        - name: lon
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+      responses:
+        '200':
+          description: Nearest seed place.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UrbanPlaceResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /api/v1/urban/route/preview:
+    post:
+      tags: [SIG]
+      summary: Preview a road itinerary via Valhalla with MotodiGo traffic overlay fallback.
+      operationId: previewUrbanRoute
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoutePreviewRequest'
+      responses:
+        '200':
+          description: Primary route plus up to two alternatives.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutePreviewResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /api/v1/urban/route/alternatives:
+    post:
+      tags: [SIG]
+      summary: Same payload as preview; kept as an explicit alternatives endpoint.
+      operationId: previewUrbanRouteAlternatives
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoutePreviewRequest'
+      responses:
+        '200':
+          description: Primary route plus alternatives.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutePreviewResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /api/v1/urban/route/match:
+    post:
+      tags: [SIG]
+      summary: Snap a GPS trace to the Valhalla road graph.
+      operationId: matchUrbanRoute
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteMatchRequest'
+      responses:
+        '200':
+          description: Matched polyline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteMatchResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
   /api/v1/pricing/estimate:
     post:
       tags: [SIG]
       summary: Estimate an urban or intercity price.
+      description: >
+        Returns the recommended itinerary at the top level plus up to 3 distinct
+        options (RECOMMENDED / FASTEST / CHEAPEST) with geometry and a structured breakdown.
+        Duplicate geometries are not repeated. Booking confirmation is out of scope.
       operationId: estimatePricing
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1148,20 +2142,108 @@ paths:
               $ref: '#/components/schemas/PricingEstimateRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Fare estimate with route options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingEstimateResponse'
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/intercity/announcements:
     get:
       tags: [Intercity]
-      summary: Search intercity announcements.
+      summary: Search intercity announcements (multicriteria, CORE-INTER-001).
+      description: >
+        Cumulative filters on city, date, price, time window, quarter and availability.
+        Only PUBLISHED/FULL announcements from VALIDATED publishers are returned.
+        When no row matches, wideningSuggestions proposes deterministic relaxations.
       operationId: searchIntercityAnnouncements
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: departureCity
+          in: query
+          schema:
+            type: string
+        - name: destinationCity
+          in: query
+          schema:
+            type: string
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: timeFrom
+          in: query
+          schema:
+            type: string
+            format: time
+        - name: timeTo
+          in: query
+          schema:
+            type: string
+            format: time
+        - name: quarter
+          in: query
+          schema:
+            type: string
+        - name: onlyAvailable
+          in: query
+          description: When true (default), keep rows with remainingSeats > 0.
+          schema:
+            type: boolean
+            default: true
+        - name: sort
+          in: query
+          schema:
+            $ref: '#/components/schemas/AnnouncementSort'
+          description: Default departureTime.
+        - name: nearLat
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: nearLon
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Paginated search results (possibly empty with widening suggestions).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementSearchPageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
     post:
       tags: [Intercity]
-      summary: Create an intercity announcement.
+      summary: Create and publish an intercity announcement (CORE-INTER-001).
+      description: >
+        Requires INTERCITY_ANNOUNCEMENT_WRITE (VALIDATED TRANSPORTER or AGENCY active profile).
+        Vehicle must be owned by the publisher, VALIDATED and active; totalSeats cannot exceed capacity.
       operationId: createIntercityAnnouncement
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1170,14 +2252,159 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/CreateIntercityAnnouncementRequest'
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
+          description: Announcement published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/intercity/announcements/mine:
+    get:
+      tags: [Intercity]
+      summary: List announcements of the active transporter/agency profile.
+      operationId: listMyIntercityAnnouncements
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated publisher announcements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementMinePageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/intercity/announcements/{id}:
+    get:
+      tags: [Intercity]
+      summary: Get an intercity announcement by id.
+      description: >
+        Owners see any status. Other authenticated users only see PUBLISHED or FULL announcements.
+      operationId: getIntercityAnnouncement
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Announcement detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [Intercity]
+      summary: Update a modifiable intercity announcement.
+      operationId: updateIntercityAnnouncement
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIntercityAnnouncementRequest'
+      responses:
+        '200':
+          description: Updated announcement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/intercity/announcements/{id}/close:
+    post:
+      tags: [Intercity]
+      summary: Close an owned intercity announcement.
+      operationId: closeIntercityAnnouncement
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Announcement closed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/intercity/announcements/{id}/cancel:
+    post:
+      tags: [Intercity]
+      summary: Cancel an owned intercity announcement.
+      operationId: cancelIntercityAnnouncement
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Announcement cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntercityAnnouncementResponse'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /api/v1/intercity/announcements/{id}/bookings:
     post:
       tags: [Intercity]
-      summary: Book seats on an intercity announcement.
+      summary: Subscribe to an intercity announcement (CORE-BOOK-001).
+      description: >
+        Creates a `PENDING` booking for the active passenger profile.
+        **Gateway RBAC:** JWT must include permission `PASSENGER_BOOK_RIDE` (issued only when the
+        active profile is `PASSENGER`). After creating or activating a passenger profile, call
+        `POST /api/v1/auth/login` or `POST /api/v1/auth/refresh` and replace the Bearer token in
+        Authorize — a stale token yields gateway `403 ACCESS_DENIED`.
+        Seats are **not** decremented yet; the announcement owner must confirm to acquire a
+        transactional SeatLock. Refused when the announcement is not `PUBLISHED`, has insufficient
+        remaining seats, departure is past, or the passenger already has an active booking on this
+        announcement. Default confirmation TTL is 10 minutes (`expiresAt`).
+        Common 409 codes: `BOOKING_NOT_AVAILABLE`, `BOOKING_DUPLICATE`.
       operationId: bookIntercityAnnouncement
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1187,10 +2414,258 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/CreateBookingRequest'
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
+          description: Booking created in `PENDING` status (awaiting owner confirmation).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Validation failed (`VALIDATION_FAILED` / `BOOKING_INVALID`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Active passenger profile required (`BOOKING_FORBIDDEN` / `ACTIVE_PROFILE_REQUIRED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: >
+            Announcement full/unavailable (`BOOKING_NOT_AVAILABLE`) or duplicate active booking
+            (`BOOKING_DUPLICATE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    get:
+      tags: [Intercity]
+      summary: List bookings for an announcement owned by the active transporter/agency (CORE-BOOK-001).
+      description: >
+        Owner-only listing (active transporter/agency profile must own the announcement). Used so
+        both parties can see subscription status after CORE-BOOK-001.
+      operationId: listAnnouncementBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+        - name: page
+          in: query
+          required: false
+          description: Zero-based page index.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Page size (capped at 100).
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated bookings for the announcement (newest first).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Caller is not the announcement owner (`BOOKING_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Announcement not found (`BOOKING_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/bookings/mine:
+    get:
+      tags: [Intercity]
+      summary: List bookings of the active passenger profile (CORE-BOOK-001).
+      description: >
+        Passenger-side status list for the active `PASSENGER` profile. Complements owner listing so
+        both parties see booking status.
+      operationId: listMyBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: page
+          in: query
+          required: false
+          description: Zero-based page index.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Page size (capped at 100).
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated passenger bookings (newest first).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Active passenger profile required (`BOOKING_FORBIDDEN` / `ACTIVE_PROFILE_REQUIRED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/bookings/{id}:
+    get:
+      tags: [Intercity]
+      summary: Get a booking visible to the passenger or announcement owner (CORE-BOOK-001).
+      description: >
+        Returns booking detail when the active profile is either the passenger who subscribed or the
+        transporter/agency that owns the announcement. Other profiles receive 403.
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Neither passenger nor announcement owner (`BOOKING_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Booking not found (`BOOKING_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/bookings/{id}/confirm:
+    post:
+      tags: [Intercity]
+      summary: Confirm a PENDING booking and lock seats (CORE-BOOK-001).
+      description: >
+        Announcement owner confirmation (`INTERCITY_BOOKING_CONFIRM`). Runs in one transaction:
+        `SELECT … FOR UPDATE` on the announcement, insert SeatLock, decrement `remainingSeats`
+        (announcement becomes `FULL` at 0), set booking to `PENDING_PAYMENT` with payment TTL
+        (`expiresAt`, default 10 minutes). Concurrent confirms cannot over-consume seats; losers
+        get 409 `NO_SEAT_AVAILABLE`. Ride payment itself is CORE-PAY-002.
+      operationId: confirmBooking
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking moved to `PENDING_PAYMENT` with seats locked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not the announcement owner or missing `INTERCITY_BOOKING_CONFIRM`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Booking not found (`BOOKING_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: >
+            Not confirmable (`BOOKING_NOT_CONFIRMABLE`, e.g. not `PENDING` / confirmation TTL elapsed)
+            or insufficient seats under lock (`NO_SEAT_AVAILABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/bookings/{id}/cancel:
+    post:
+      tags: [Intercity]
+      summary: Cancel a booking according to business rules (CORE-BOOK-001).
+      description: >
+        Passenger may cancel `PENDING`, `PENDING_PAYMENT` or `CONFIRMED`. Announcement owner may
+        refuse `PENDING` or cancel after lock. `PAID` / `EXPIRED` / already `CANCELLED` are refused
+        (`BOOKING_NOT_CANCELLABLE`). After departure (except plain `PENDING` without lock), cancel
+        is refused. When a non-consumed SeatLock exists, seats are restored and the lock marked
+        consumed. Requires `cancellationReason`.
+      operationId: cancelBooking
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+      responses:
+        '200':
+          description: Booking `CANCELLED`; seats released when a SeatLock existed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Missing/invalid cancellation reason (`VALIDATION_FAILED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Neither passenger nor announcement owner (`BOOKING_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Booking not found (`BOOKING_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Business rules forbid cancellation (`BOOKING_NOT_CANCELLABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/ai/recommendations:
     post:
       tags: [AI]
@@ -1285,22 +2760,57 @@ paths:
   /api/v1/wallet/deposits:
     post:
       tags: [Wallet/Payments]
-      summary: Initiate a wallet deposit (CORE-PAY-001, future).
+      summary: Initiate a Mobile Money wallet deposit (CORE-PAY-001).
       description: >
-        Placeholder for Mobile Money deposit initiation. Not part of CORE-WALLET-001; routed by the
-        gateway but implemented under CORE-PAY-001.
+        Creates a MOBILE_MONEY_DEPOSIT transaction, calls the configured provider client, and
+        returns PENDING_CALLBACK with an external reference. Optional Idempotency-Key avoids
+        duplicate initiations.
       operationId: createWalletDeposit
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PaymentRequest'
+              $ref: '#/components/schemas/DepositRequest'
       responses:
         '202':
-          $ref: '#/components/responses/Accepted'
+          description: Deposit accepted and awaiting provider confirmation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /api/v1/wallet/deposits/{id}:
+    get:
+      tags: [Wallet/Payments]
+      summary: Get Mobile Money deposit status for the authenticated user (CORE-PAY-001).
+      operationId: getWalletDeposit
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deposit status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /api/v1/integrations/mobile-money/callback:
     post:
       tags: [Wallet/Payments]
@@ -1308,7 +2818,7 @@ paths:
       description: >
         Legacy alias for aggregator callbacks. Prefer provider-specific paths.
         GATE-INTEGRATIONS-001 verifies X-Signature, origin allowlist and edge idempotency
-        before forwarding once to backend-core. Wallet credit remains CORE-PAY-001.
+        before forwarding once to backend-core. CORE-PAY-001 credits the wallet at most once.
       operationId: mobileMoneyCallback
       security:
         - CallbackSignature: []
@@ -1325,26 +2835,37 @@ paths:
           schema:
             type: string
             enum: [mtn, orange, aggregator]
+        - name: X-Signature
+          in: header
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/MobileMoneyCallbackRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Callback acknowledged (including idempotent replays).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
         '401':
+          $ref: '#/components/responses/Error'
+        '404':
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
   /api/v1/integrations/mobile-money/mtn/callback:
     post:
       tags: [Wallet/Payments]
-      summary: Receive MTN MoMo callback (GATE-INTEGRATIONS-001).
+      summary: Receive MTN MoMo callback (GATE-INTEGRATIONS-001 + CORE-PAY-001).
       description: >
         Edge signature, origin and idempotency checks run in the gateway, then the payload is
-        forwarded once to backend-core for CORE-PAY-001 processing.
+        forwarded once to backend-core for wallet credit / failure handling.
       operationId: mobileMoneyMtnCallback
       security:
         - CallbackSignature: []
@@ -1355,23 +2876,34 @@ paths:
           required: false
           schema:
             type: string
+        - name: X-Signature
+          in: header
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/MobileMoneyCallbackRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Callback acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
         '401':
+          $ref: '#/components/responses/Error'
+        '404':
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
   /api/v1/integrations/mobile-money/orange/callback:
     post:
       tags: [Wallet/Payments]
-      summary: Receive Orange Money callback (GATE-INTEGRATIONS-001).
+      summary: Receive Orange Money callback (GATE-INTEGRATIONS-001 + CORE-PAY-001).
       operationId: mobileMoneyOrangeCallback
       security:
         - CallbackSignature: []
@@ -1382,23 +2914,34 @@ paths:
           required: false
           schema:
             type: string
+        - name: X-Signature
+          in: header
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/MobileMoneyCallbackRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Callback acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
         '401':
+          $ref: '#/components/responses/Error'
+        '404':
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
   /api/v1/integrations/mobile-money/aggregator/callback:
     post:
       tags: [Wallet/Payments]
-      summary: Receive payment aggregator callback (GATE-INTEGRATIONS-001).
+      summary: Receive payment aggregator callback (GATE-INTEGRATIONS-001 + CORE-PAY-001).
       operationId: mobileMoneyAggregatorCallback
       security:
         - CallbackSignature: []
@@ -1409,25 +2952,107 @@ paths:
           required: false
           schema:
             type: string
+        - name: X-Signature
+          in: header
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/MobileMoneyCallbackRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Callback acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
         '401':
           $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
         '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/admin/payments/transactions:
+    get:
+      tags: [Admin, Wallet/Payments]
+      summary: List Mobile Money deposits for reconciliation (CORE-PAY-001).
+      description: Requires admin permission PAYMENT_RECONCILE_READ. Filterable by externalReference.
+      operationId: listPaymentTransactions
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [MTN_MOMO, ORANGE_MONEY, AGGREGATOR]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INITIATED, PENDING_CALLBACK, CONFIRMED, FAILED, EXPIRED, REFUNDED]
+        - name: externalReference
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated reconciliation page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPaymentTransactionPageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/admin/payments/transactions/{id}:
+    get:
+      tags: [Admin, Wallet/Payments]
+      summary: Get a payment transaction for reconciliation (CORE-PAY-001).
+      operationId: getPaymentTransaction
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Payment transaction detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
           $ref: '#/components/responses/Error'
   /api/v1/bookings/{id}/pay:
     post:
       tags: [Wallet/Payments]
       summary: Pay a booking from wallet or mobile money (CORE-PAY-002, future).
       description: >
-        Placeholder for ride payment debit/credit orchestration. Depends on CORE-WALLET-001 ledger
+        Placeholder for ride payment debit/credit orchestration after CORE-BOOK-001 has moved the
+        booking to `PENDING_PAYMENT` (seats already locked). Depends on CORE-WALLET-001 ledger
         primitives; implemented under CORE-PAY-002.
       operationId: payBooking
       parameters:
@@ -1759,6 +3384,26 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/GenericObject'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/gis/photon:
+    get:
+      tags: [Admin, SIG]
+      summary: Photon index status.
+      operationId: getPhotonIndexStatus
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/gis/photon/update:
+    post:
+      tags: [Admin, SIG]
+      summary: Trigger a manual Photon index update.
+      operationId: updatePhotonIndex
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
       responses:
         '202':
           $ref: '#/components/responses/Accepted'

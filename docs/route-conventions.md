@@ -13,11 +13,14 @@ The following prefixes are routed to `backend-core`:
 - `/api/v1/profiles/**`
 - `/api/v1/kyc/**`
 - `/api/v1/drivers/**`
-- `/api/v1/urban/**`
+- `/api/v1/urban/**` — recherche urbaine, autocomplete Photon+lieux métier, preview/matching Valhalla.
 - `/api/v1/pricing/**`
 - `/api/v1/intercity/**`
-- `/api/v1/bookings/**`
-- `/api/v1/wallet/**` — CORE-WALLET-001 implemented reads: `GET /api/v1/wallet`, `GET /api/v1/wallet/ledger` (account-scoped, XAF). Deposits/payments remain CORE-PAY-*.
+- `/api/v1/bookings/**` — CORE-BOOK-001: `GET /api/v1/bookings/mine`, `GET /api/v1/bookings/{id}`,
+  `POST /api/v1/bookings/{id}/confirm`, `POST /api/v1/bookings/{id}/cancel`. Subscription create/list
+  also live under `/api/v1/intercity/announcements/{id}/bookings`. Ride pay remains CORE-PAY-002:
+  `POST /api/v1/bookings/{id}/pay`.
+- `/api/v1/wallet/**` — CORE-WALLET-001 reads: `GET /api/v1/wallet`, `GET /api/v1/wallet/ledger`. CORE-PAY-001 deposits: `POST /api/v1/wallet/deposits`, `GET /api/v1/wallet/deposits/{id}`.
 - `/api/v1/payments/**`
 - `/api/v1/nfc/**`
 - `/api/v1/trips/**`
@@ -46,7 +49,7 @@ Edge checks before forwarding to backend-core:
 - Optional source IP / CIDR allowlist per provider
 - Redis idempotency (`Idempotency-Key` or body hash) so a valid callback is forwarded once
 
-Wallet credit and deposit initiation remain CORE-PAY-001.
+Wallet credit and deposit initiation are handled by CORE-PAY-001 in backend-core.
 
 ## AI Routing And Resilience (GATE-INTEGRATIONS-001)
 
