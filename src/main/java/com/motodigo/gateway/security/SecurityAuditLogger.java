@@ -16,11 +16,11 @@ import org.springframework.util.StringUtils;
 import com.motodigo.gateway.web.CorrelationIdFilter;
 
 @Component
-class SecurityAuditLogger {
+public class SecurityAuditLogger {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityAuditLogger.class);
 
-	void warn(HttpServletRequest request, GatewayErrorCode code, Authentication authentication) {
+	public void warn(HttpServletRequest request, GatewayErrorCode code, Authentication authentication) {
 		LOGGER.warn("gateway_security_event errorCode={} method={} path={} ip={} correlationId={} userHash={}",
 				code.name(),
 				request.getMethod(),

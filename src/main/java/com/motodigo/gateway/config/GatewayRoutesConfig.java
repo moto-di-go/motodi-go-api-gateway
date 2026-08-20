@@ -1,9 +1,12 @@
 package com.motodigo.gateway.config;
 
 import static org.springframework.cloud.gateway.server.mvc.filter.BeforeFilterFunctions.uri;
+import static org.springframework.cloud.gateway.server.mvc.filter.CircuitBreakerFilterFunctions.circuitBreaker;
 import static org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions.route;
 import static org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctions.http;
 import static org.springframework.web.servlet.function.RequestPredicates.path;
+
+import java.net.URI;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,9 +21,12 @@ class GatewayRoutesConfig {
 			"/api/v1/profiles",
 			"/api/v1/profiles/**",
 			"/api/v1/kyc/**",
+			"/api/v1/vehicles/**",
 			"/api/v1/drivers/**",
 			"/api/v1/urban/**",
 			"/api/v1/pricing/**",
+			"/api/v1/gis/**",
+			"/api/v1/realtime/**",
 			"/api/v1/intercity/**",
 			"/api/v1/bookings/**",
 			"/api/v1/wallet/**",
@@ -40,13 +46,20 @@ class GatewayRoutesConfig {
 		for (String prefix : BACKEND_CORE_PREFIXES) {
 			builder.route(path(prefix), http());
 		}
-		return builder.before(uri(properties.backendCoreBaseUrl())).build();
+		return builder
+				.filter(circuitBreaker("backendCore"))
+				.before(uri(properties.backendCoreBaseUrl()))
+				.build();
 	}
 
 	@Bean
 	RouterFunction<ServerResponse> backendAiRoutes(GatewayProperties properties) {
 		return route("backend-ai-api-v1")
 				.route(path("/api/v1/ai/**"), http())
+				.filter(circuitBreaker(config -> config
+						.setId("backendAi")
+						.setFallbackUri(URI.create("forward:/__gateway/ai/fallback"))
+						.setStatusCodes("500", "502", "503", "504")))
 				.before(uri(properties.backendAiBaseUrl()))
 				.build();
 	}

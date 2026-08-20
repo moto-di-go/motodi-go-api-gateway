@@ -76,18 +76,35 @@ class GatewayRateLimitingTests {
 
 	@Test
 	void callbackRequestsAreLimitedWithoutJwt() {
-		var first = this.restTemplate.postForEntity(
-				url("/api/v1/integrations/mobile-money/callback"),
-				HttpEntity.EMPTY,
-				String.class);
-		var second = this.restTemplate.postForEntity(
-				url("/api/v1/integrations/mobile-money/callback"),
-				HttpEntity.EMPTY,
-				String.class);
+		String body = "{\"ref\":\"rate-limit-1\"}";
+		HttpHeaders firstHeaders = signedCallbackHeaders(body, "aggregator");
+		firstHeaders.set("X-Forwarded-For", "203.0.113.10");
+		HttpHeaders secondHeaders = signedCallbackHeaders(body, "aggregator");
+		secondHeaders.set("X-Forwarded-For", "203.0.113.10");
+		var first = this.restTemplate.postForEntity(url("/api/v1/integrations/mobile-money/callback"),
+				new HttpEntity<>(body, firstHeaders), String.class);
+		var second = this.restTemplate.postForEntity(url("/api/v1/integrations/mobile-money/callback"),
+				new HttpEntity<>(body, secondHeaders), String.class);
 
 		assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 		assertThat(second.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 		assertThat(second.getBody()).contains("\"errorCode\":\"RATE_LIMITED\"");
+	}
+
+	@Test
+	void providerCallbackPathIsRateLimited() {
+		String body = "{\"ref\":\"rate-limit-mtn\"}";
+		HttpHeaders firstHeaders = signedCallbackHeaders(body, "mtn");
+		firstHeaders.set("X-Forwarded-For", "203.0.113.20");
+		HttpHeaders secondHeaders = signedCallbackHeaders(body, "mtn");
+		secondHeaders.set("X-Forwarded-For", "203.0.113.20");
+		var first = this.restTemplate.postForEntity(url("/api/v1/integrations/mobile-money/mtn/callback"),
+				new HttpEntity<>(body, firstHeaders), String.class);
+		var second = this.restTemplate.postForEntity(url("/api/v1/integrations/mobile-money/mtn/callback"),
+				new HttpEntity<>(body, secondHeaders), String.class);
+
+		assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		assertThat(second.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 	}
 
 	@Test
@@ -133,6 +150,10 @@ class GatewayRateLimitingTests {
 		registry.add("motodigo.gateway.rate-limit.callback.capacity", () -> "1");
 		registry.add("motodigo.gateway.rate-limit.callback.refill-tokens", () -> "1");
 		registry.add("motodigo.gateway.rate-limit.callback.refill-period-seconds", () -> "60");
+		registry.add("motodigo.gateway.integrations.mobile-money.providers.mtn.hmac-secret", () -> "test-mtn-hmac-secret-value");
+		registry.add("motodigo.gateway.integrations.mobile-money.providers.orange.hmac-secret", () -> "test-orange-hmac-secret-value");
+		registry.add("motodigo.gateway.integrations.mobile-money.providers.aggregator.hmac-secret",
+				() -> "test-aggregator-hmac-secret-value");
 	}
 
 	@BeforeEach
@@ -155,6 +176,30 @@ class GatewayRateLimitingTests {
 
 	private String url(String path) {
 		return "http://localhost:" + this.port + path;
+	}
+
+	private static HttpHeaders signedCallbackHeaders(String body, String provider) {
+		HttpHeaders headers = new HttpHeaders();
+		headers.set("Content-Type", "application/json");
+		headers.set("Idempotency-Key", "rate-limit-" + provider + "-" + UUID.randomUUID());
+		String secret = switch (provider) {
+			case "mtn" -> "test-mtn-hmac-secret-value";
+			case "orange" -> "test-orange-hmac-secret-value";
+			default -> "test-aggregator-hmac-secret-value";
+		};
+		headers.set("X-Signature", hmacSha256Hex(body.getBytes(StandardCharsets.UTF_8), secret));
+		return headers;
+	}
+
+	private static String hmacSha256Hex(byte[] body, String secret) {
+		try {
+			javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+			mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+			return java.util.HexFormat.of().formatHex(mac.doFinal(body));
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	private static HttpHeaders authHeaders(String subject) {

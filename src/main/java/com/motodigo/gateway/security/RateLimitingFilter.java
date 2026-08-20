@@ -105,7 +105,9 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 				"/api/v1/nfc/tokens")) {
 			return Policy.PAYMENT;
 		}
-		if (matchesAny(path, "/api/v1/integrations/mobile-money/callback")) {
+		if (matchesAny(path,
+				"/api/v1/integrations/mobile-money/callback",
+				"/api/v1/integrations/mobile-money/*/callback")) {
 			return Policy.CALLBACK;
 		}
 		return null;

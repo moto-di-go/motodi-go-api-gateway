@@ -64,6 +64,7 @@ class MotodiGoApiGatewayApplicationTests {
 		registry.add("motodigo.gateway.auth.issuer-url", () -> TEST_ISSUER);
 		registry.add("motodigo.gateway.auth.audience", () -> TEST_AUDIENCE);
 		registry.add("motodigo.gateway.rate-limit.enabled", () -> "false");
+		registry.add("motodigo.gateway.integrations.mobile-money.enabled", () -> "false");
 		registry.add("management.health.redis.enabled", () -> "false");
 	}
 
@@ -304,6 +305,46 @@ class MotodiGoApiGatewayApplicationTests {
 		assertThat(request).isNotNull();
 		assertThat(request.path()).isEqualTo("/api/v1/profiles");
 		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
+	void walletSummaryIsRoutedToBackendCoreForAuthenticatedUser() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/wallet"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/wallet");
+		assertThat(request.authorization()).startsWith("Bearer ");
+		assertThat(request.correlationId()).isNotBlank();
+	}
+
+	@Test
+	void walletLedgerIsRoutedToBackendCoreWithQueryPreserved() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/wallet/ledger?page=0&size=20"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/wallet/ledger");
+		assertThat(request.query()).isEqualTo("page=0&size=20");
+		assertThat(request.authorization()).startsWith("Bearer ");
+	}
+
+	@Test
+	void walletRequiresAuthenticationAtGateway() {
+		var response = this.restTemplate.getForEntity(url("/api/v1/wallet"), String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(response.getBody()).contains("\"errorCode\":\"AUTH_REQUIRED\"");
 	}
 
 	@Test
@@ -567,17 +608,39 @@ class MotodiGoApiGatewayApplicationTests {
 				"/api/v1/profiles/{profileId}",
 				"/api/v1/profiles/active/{profileId}",
 				"/api/v1/kyc/documents",
+				"/api/v1/vehicles/mine",
+				"/api/v1/vehicles/{id}/photo",
 				"/api/v1/admin/kyc/pending",
 				"/api/v1/admin/kyc/{profileId}/documents",
 				"/api/v1/admin/kyc/{profileId}/decision",
 				"/api/v1/drivers/position",
 				"/api/v1/urban/drivers/nearby",
+				"/api/v1/urban/places/popular",
+				"/api/v1/urban/places/suggest",
+				"/api/v1/urban/geocode",
+				"/api/v1/urban/reverse",
+				"/api/v1/urban/route/preview",
+				"/api/v1/urban/route/alternatives",
+				"/api/v1/urban/route/match",
 				"/api/v1/pricing/estimate",
 				"/api/v1/intercity/announcements",
+				"/api/v1/intercity/announcements/mine",
+				"/api/v1/intercity/announcements/{id}",
+				"/api/v1/intercity/announcements/{id}/close",
+				"/api/v1/intercity/announcements/{id}/cancel",
 				"/api/v1/intercity/announcements/{id}/bookings",
+				"/api/v1/bookings/mine",
+				"/api/v1/bookings/{id}",
+				"/api/v1/bookings/{id}/confirm",
+				"/api/v1/bookings/{id}/cancel",
 				"/api/v1/ai/recommendations",
+				"/api/v1/wallet",
+				"/api/v1/wallet/ledger",
 				"/api/v1/wallet/deposits",
 				"/api/v1/integrations/mobile-money/callback",
+				"/api/v1/integrations/mobile-money/mtn/callback",
+				"/api/v1/integrations/mobile-money/orange/callback",
+				"/api/v1/integrations/mobile-money/aggregator/callback",
 				"/api/v1/bookings/{id}/pay",
 				"/api/v1/nfc/tokens",
 				"/api/v1/offline/sync",
@@ -593,6 +656,11 @@ class MotodiGoApiGatewayApplicationTests {
 				"/api/v1/admin/ops/bookings",
 				"/api/v1/admin/pricing/rules",
 				"/api/v1/admin/gis/layers",
+				"/api/v1/admin/gis/photon",
+				"/api/v1/admin/gis/photon/update",
+				"/api/v1/gis/layers",
+				"/api/v1/realtime/sse",
+				"/api/v1/drivers/availability",
 				"/api/v1/admin/kpi",
 				"/api/v1/admin/kpi/export.csv",
 				"/actuator/health",
