@@ -17,7 +17,16 @@ spring:
   http:
     client:
       connect-timeout: ${GATEWAY_HTTP_CONNECT_TIMEOUT:2s}
-      read-timeout: ${GATEWAY_HTTP_READ_TIMEOUT:6s}
+      # Long enough for SSE; short REST calls still abort via Resilience4j TimeLimiter (backendCore).
+      read-timeout: ${GATEWAY_HTTP_READ_TIMEOUT:35m}
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          # Flush sooner for text/event-stream proxied through Gateway MVC.
+          streaming-buffer-size: ${GATEWAY_SSE_STREAMING_BUFFER_SIZE:512}
+          streaming-media-types:
+            - text/event-stream
 
 management:
   endpoints:
@@ -45,6 +54,12 @@ resilience4j:
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
+      backendCoreRealtime:
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
       backendAi:
         slidingWindowSize: 10
         minimumNumberOfCalls: 3
@@ -55,6 +70,10 @@ resilience4j:
     instances:
       backendCore:
         timeoutDuration: ${GATEWAY_CORE_TIMEOUT:5s}
+        cancelRunningFuture: true
+      backendCoreRealtime:
+        # Align with backend-core SseEmitter timeout (30m) plus margin.
+        timeoutDuration: ${GATEWAY_CORE_REALTIME_TIMEOUT:35m}
         cancelRunningFuture: true
       backendAi:
         timeoutDuration: ${GATEWAY_AI_TIMEOUT:3s}
@@ -88,6 +107,10 @@ motodigo:
         capacity: ${GATEWAY_RATE_LIMIT_CALLBACK_CAPACITY:60}
         refill-tokens: ${GATEWAY_RATE_LIMIT_CALLBACK_REFILL_TOKENS:60}
         refill-period-seconds: ${GATEWAY_RATE_LIMIT_CALLBACK_REFILL_PERIOD_SECONDS:60}
+      gps:
+        capacity: ${GATEWAY_RATE_LIMIT_GPS_CAPACITY:1}
+        refill-tokens: ${GATEWAY_RATE_LIMIT_GPS_REFILL_TOKENS:1}
+        refill-period-seconds: ${GATEWAY_RATE_LIMIT_GPS_REFILL_PERIOD_SECONDS:2}
     integrations:
       mobile-money:
         enabled: ${GATEWAY_MOBILE_MONEY_CALLBACK_ENABLED:true}

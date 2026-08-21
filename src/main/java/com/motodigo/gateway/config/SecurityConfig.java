@@ -82,11 +82,12 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.PUT, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
 						.requestMatchers(HttpMethod.GET, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/drivers/availability").hasAuthority("MOTOTAXI_SET_AVAILABILITY")
-						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby",
-								"/api/v1/urban/places/popular",
+						// Place lookup is shared (passenger search + publisher annonces + zone mototaxi).
+						.requestMatchers(HttpMethod.GET, "/api/v1/urban/places/popular",
 								"/api/v1/urban/places/suggest",
 								"/api/v1/urban/geocode",
-								"/api/v1/urban/reverse").hasAuthority("PASSENGER_SEARCH_RIDE")
+								"/api/v1/urban/reverse").authenticated()
+						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby").hasAuthority("PASSENGER_SEARCH_RIDE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/urban/route/preview",
 								"/api/v1/urban/route/alternatives",
 								"/api/v1/urban/route/match").hasAuthority("PASSENGER_SEARCH_RIDE")
@@ -113,7 +114,7 @@ class SecurityConfig {
 								"/api/v1/admin/kyc/documents/*/decision").hasAuthority("KYC_DECIDE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue").hasAuthority("MODERATION_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/moderation/actions").hasAuthority("MODERATION_WRITE")
-						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/overview", "/api/v1/admin/ops/bookings").hasAuthority("OPERATIONS_READ")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/**").hasAuthority("OPERATIONS_READ")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_WRITE")
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/admin/pricing/rules/*").hasAuthority("PRICING_WRITE")

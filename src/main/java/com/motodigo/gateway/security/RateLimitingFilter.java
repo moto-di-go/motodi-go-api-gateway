@@ -79,12 +79,17 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 			case OTP -> this.properties.rateLimit().otp();
 			case PAYMENT -> this.properties.rateLimit().payment();
 			case CALLBACK -> this.properties.rateLimit().callback();
+			case GPS -> this.properties.rateLimit().gps();
 		};
 	}
 
 	private static Policy policyFor(HttpServletRequest request) {
 		String method = request.getMethod().toUpperCase(Locale.ROOT);
 		String path = request.getRequestURI();
+		if ((HttpMethod.PUT.matches(method) || HttpMethod.PATCH.matches(method))
+				&& matchesAny(path, "/api/v1/drivers/position")) {
+			return Policy.GPS;
+		}
 		if (!HttpMethod.POST.matches(method) && !HttpMethod.PUT.matches(method)) {
 			return null;
 		}
@@ -124,13 +129,13 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
 	private static String rateLimitKey(HttpServletRequest request, Policy policy) {
 		String identity = switch (policy) {
-			case PAYMENT -> paymentIdentity(request);
+			case PAYMENT, GPS -> authenticatedIdentity(request);
 			case AUTH, OTP, CALLBACK -> clientIp(request);
 		};
 		return "motodigo:gateway:rate-limit:" + policy.name().toLowerCase(Locale.ROOT) + ":" + identity;
 	}
 
-	private static String paymentIdentity(HttpServletRequest request) {
+	private static String authenticatedIdentity(HttpServletRequest request) {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		if (authentication instanceof JwtAuthenticationToken jwtAuthentication
 				&& StringUtils.hasText(jwtAuthentication.getToken().getSubject())) {
@@ -157,6 +162,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 		AUTH,
 		OTP,
 		PAYMENT,
-		CALLBACK
+		CALLBACK,
+		GPS
 	}
 }

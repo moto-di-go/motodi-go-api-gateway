@@ -98,6 +98,10 @@ HIGH
 - CORE-TRACK-001
 - CORE-NOTIF-001
 
+## Statut
+
+IMPLEMENTED
+
 ## Objectif
 
 En tant qu'utilisateur, je veux recevoir les changements de position, reservation et statut de trajet afin de suivre les operations en temps reel.
