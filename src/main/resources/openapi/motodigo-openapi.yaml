@@ -17,19 +17,39 @@ tags:
       CORE-BOOK-001 (implemented): passenger subscription (`PENDING`), transporter/agency confirmation
       with transactional seat locks (`PENDING_PAYMENT`), status visibility for both parties,
       cancellation rules, and automatic expiration of unpaid/unconfirmed bookings.
-      Ride payment after lock is CORE-PAY-002 (future): `POST /api/v1/bookings/{id}/pay`.
+      CORE-PAY-002 (implemented): wallet ride payment after lock — `POST /api/v1/bookings/{id}/pay`
+      (atomic passenger debit / transporter credit, booking `PAID`, receipt, then CORE-TRACK-001
+      intercity trip creation in `CONFIRMED` linked via `bookings.trip_id`).
   - name: AI
   - name: Wallet/Payments
     description: >
       CORE-WALLET-001 (implemented): account-scoped wallet balance and immutable ledger reads.
       The wallet belongs to the user account (JWT subject), not the active profile.
       CORE-PAY-001 (implemented): Mobile Money deposit initiation, signed callback processing and
-      admin reconciliation by external reference. CORE-PAY-002 (future): ride payments.
+      admin reconciliation by external reference.
+      CORE-PAY-002 (implemented): wallet ride payments for `PENDING_PAYMENT` bookings with receipt.
   - name: Offline/NFC
   - name: Trips
+    description: >
+      CORE-TRACK-001 (implemented): intercity trip lifecycle after ride payment —
+      `GET /api/v1/trips/active`, `GET /api/v1/trips/{id}`, `PATCH /api/v1/trips/{id}/status`,
+      `POST /api/v1/trips/{id}/complete`, and `GET /api/v1/trips/{id}/events` (polling fallback).
+      Status FSM: CONFIRMED → APPROACHING → ON_BOARD → COMPLETED (CANCELLED from non-terminal).
   - name: Support
   - name: Admin
+    description: >
+      ADMIN-OPS-001 (implemented): operations overview, users/profiles, announcements,
+      bookings and payments lists with CSV export under `/api/v1/admin/ops/**`
+      (permission `OPERATIONS_READ`). Payment reconciliation remains available at
+      `/api/v1/admin/payments/transactions`.
   - name: Realtime
+    description: >
+      GATE-REALTIME-001 (implemented): gateway proxies `/api/v1/realtime/**` (SSE and WS path)
+      to backend-core with JWT auth, long SSE timeout, and streaming flush. Prefer channels
+      `trip` (filter by userId) or `trip:{uuid}` (filter by tripId) for `trip.status.updated`.
+      Polling fallback when realtime is unavailable: `GET /api/v1/drivers/position`,
+      `GET /api/v1/trips/{id}`, `GET /api/v1/trips/{id}/events`. GPS publish is rate-limited
+      at the gateway (`PUT`/`PATCH` `/api/v1/drivers/position`, default 1 req / 2s).
   - name: Health
 components:
   securitySchemes:
@@ -401,7 +421,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Optional linked trip id (populated by later tracking/payment flows).
+          description: Optional linked trip id (populated by CORE-TRACK-001 after ride payment).
         status:
           $ref: '#/components/schemas/BookingStatus'
         seatsRequested:
@@ -449,6 +469,116 @@ components:
           maximum: 100
         hasMore:
           type: boolean
+    TripStatus:
+      type: string
+      description: Operational trip status (CORE-TRACK-001 FSM).
+      enum: [CONFIRMED, APPROACHING, ON_BOARD, COMPLETED, CANCELLED]
+    TripType:
+      type: string
+      enum: [URBAN, INTERCITY]
+    TripResponse:
+      type: object
+      description: >
+        Active or historical trip (CORE-TRACK-001). Intercity trips are created in CONFIRMED
+        after successful wallet ride payment and linked via `bookings.trip_id`.
+      required: [id, type, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/TripType'
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        passengerProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        driverProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        transporterProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        bookingId:
+          type: string
+          format: uuid
+          nullable: true
+        announcementPublisherProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        departureCity:
+          type: string
+          nullable: true
+        destinationCity:
+          type: string
+          nullable: true
+        ptRamassage:
+          type: string
+          nullable: true
+        plannedDepartureAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finalPriceFcfa:
+          type: number
+          format: double
+          nullable: true
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        driverPosition:
+          type: object
+          nullable: true
+          description: Last known driver GPS when `driverProfileId` is set.
+          additionalProperties: true
+    ActiveTripsResponse:
+      type: object
+      required: [trips]
+      properties:
+        trips:
+          type: array
+          items:
+            $ref: '#/components/schemas/TripResponse'
+    TripEventResponse:
+      type: object
+      required: [id, tripId, status, label, occurredAt, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        label:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+    UpdateTripStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/TripStatus'
     WideningSuggestion:
       type: object
       description: Deterministic suggestion to broaden search criteria when the result set is empty.
@@ -1107,6 +1237,59 @@ components:
           type: string
           format: date-time
           nullable: true
+    RidePaymentResponse:
+      type: object
+      description: Confirmed wallet ride payment for a booking (CORE-PAY-002).
+      required: [id, bookingId, status, amount, currency, provider, initiatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        bookingId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [INITIATED, CONFIRMED, FAILED, EXPIRED, REFUNDED]
+        amount:
+          type: number
+          format: double
+          description: Total charged to the passenger (`priceFcfa * seatsRequested`).
+        platformFee:
+          type: number
+          format: double
+          nullable: true
+        transporterAmount:
+          type: number
+          format: double
+          nullable: true
+          description: Amount credited to the transporter wallet after platform fee.
+        currency:
+          type: string
+          enum: [XAF]
+        provider:
+          type: string
+          enum: [WALLET]
+        initiatedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        receiptId:
+          type: string
+          format: uuid
+          nullable: true
+        receiptNumber:
+          type: string
+          nullable: true
+        receiptPdfUrl:
+          type: string
+          nullable: true
+          description: Placeholder URL until PDF generation is available.
+        booking:
+          $ref: '#/components/schemas/BookingResponse'
     MobileMoneyCallbackRequest:
       type: object
       description: >
@@ -1307,7 +1490,7 @@ components:
           format: uuid
         engine:
           type: string
-            enum: [VALHALLA, LOCAL, DIRECT]
+          enum: [VALHALLA, LOCAL, DIRECT]
         polyline:
           type: string
         distanceKm:
@@ -1814,8 +1997,12 @@ paths:
           $ref: '#/components/responses/Accepted'
   /api/v1/drivers/position:
     put:
-      tags: [SIG]
-      summary: Publish the current driver position.
+      tags: [SIG, Realtime]
+      summary: Publish the current driver position (GATE-REALTIME-001 GPS rate limit).
+      description: >
+        Requires `MOTOTAXI_SHARE_POSITION`. Gateway applies a dedicated GPS token-bucket
+        (default capacity 1, refill 1 token every 2 seconds, keyed by JWT subject).
+        Excess requests return `429 RATE_LIMITED` with `Retry-After` / `X-RateLimit-*`.
       operationId: updateDriverPosition
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1828,9 +2015,13 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+        '429':
+          $ref: '#/components/responses/Error'
     get:
-      tags: [SIG]
-      summary: Read the last published driver position.
+      tags: [SIG, Realtime]
+      summary: Read the last published driver position (polling fallback).
+      description: >
+        HTTP polling fallback when SSE/WebSocket is unavailable (GATE-REALTIME-001).
       operationId: getDriverPosition
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1855,14 +2046,76 @@ paths:
           $ref: '#/components/responses/Accepted'
   /api/v1/realtime/sse:
     get:
-      tags: [SIG]
-      summary: Subscribe to GPS realtime events via SSE.
+      tags: [SIG, Realtime]
+      summary: Subscribe to realtime events via SSE (GATE-REALTIME-001).
+      description: >
+        Proxied to backend-core with JWT. Query `channel` selects the feed:
+        geo (`yaounde`), `notification`, `trip` (user-scoped `trip.status.updated`),
+        or `trip:{uuid}` (trip-scoped). Gateway uses a long response timeout and flushes
+        `text/event-stream` chunks. On degraded networks, poll
+        `GET /api/v1/drivers/position`, `GET /api/v1/trips/{id}`, and
+        `GET /api/v1/trips/{id}/events`.
       operationId: subscribeRealtimeSse
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: channel
+          in: query
+          required: false
+          schema:
+            type: string
+            default: yaounde
+          description: Feed channel (`yaounde`, `notification`, `trip`, or `trip:{uuid}`).
+      responses:
+        '200':
+          description: Server-Sent Events stream (`text/event-stream`).
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/realtime/channels:
+    get:
+      tags: [Realtime]
+      summary: List realtime channel names and polling fallbacks (GATE-REALTIME-001).
+      operationId: listRealtimeChannels
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Channel map and HTTP polling fallbacks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /api/v1/realtime/ws:
+    get:
+      tags: [Realtime]
+      summary: WebSocket realtime endpoint (GATE-REALTIME-001).
+      description: >
+        Handshake path proxied to backend-core. Prefer `Authorization: Bearer` through the
+        gateway; backend-core also accepts `access_token` query for direct connections.
+        Same channel semantics as SSE.
+      operationId: subscribeRealtimeWebSocket
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: channel
+          in: query
+          required: false
+          schema:
+            type: string
+            default: yaounde
+        - name: access_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional JWT when connecting without Authorization header (core-direct).
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket).
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/gis/layers:
     get:
       tags: [SIG]
@@ -2579,7 +2832,7 @@ paths:
         `SELECT … FOR UPDATE` on the announcement, insert SeatLock, decrement `remainingSeats`
         (announcement becomes `FULL` at 0), set booking to `PENDING_PAYMENT` with payment TTL
         (`expiresAt`, default 10 minutes). Concurrent confirms cannot over-consume seats; losers
-        get 409 `NO_SEAT_AVAILABLE`. Ride payment itself is CORE-PAY-002.
+        get 409 `NO_SEAT_AVAILABLE`. Ride payment is CORE-PAY-002 (`POST /api/v1/bookings/{id}/pay`).
       operationId: confirmBooking
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3049,24 +3302,48 @@ paths:
   /api/v1/bookings/{id}/pay:
     post:
       tags: [Wallet/Payments]
-      summary: Pay a booking from wallet or mobile money (CORE-PAY-002, future).
+      summary: Pay a booking from the passenger wallet (CORE-PAY-002).
       description: >
-        Placeholder for ride payment debit/credit orchestration after CORE-BOOK-001 has moved the
-        booking to `PENDING_PAYMENT` (seats already locked). Depends on CORE-WALLET-001 ledger
-        primitives; implemented under CORE-PAY-002.
+        Passenger pays a `PENDING_PAYMENT` booking atomically: wallet debit (passenger), wallet
+        credit (transporter minus platform fee), booking status `PAID`, payment transaction
+        `CONFIRMED`, and receipt issuance. Amount is `announcement.priceFcfa * seatsRequested`.
+        Insufficient balance returns `INSUFFICIENT_BALANCE` without mutating the booking.
+        Optional Idempotency-Key returns the existing ride payment when replayed.
       operationId: payBooking
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PaymentRequest'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 180
       responses:
-        '202':
-          $ref: '#/components/responses/Accepted'
+        '200':
+          description: Ride payment confirmed and booking marked PAID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RidePaymentResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          description: Booking not payable (wrong status or payment window expired).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Insufficient wallet balance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/nfc/tokens:
     post:
       tags: [Offline/NFC]
@@ -3102,17 +3379,68 @@ paths:
   /api/v1/trips/active:
     get:
       tags: [Trips]
-      summary: Get the active trip for the current user.
-      operationId: getActiveTrip
+      summary: List active trips for the current profile (CORE-TRACK-001).
+      description: >
+        Returns trips in CONFIRMED, APPROACHING or ON_BOARD for the active profile
+        (passenger, driver, transporter or announcement publisher).
+      operationId: getActiveTrips
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Active trips for the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveTripsResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Missing or inactive profile (`ACTIVE_PROFILE_REQUIRED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/trips/{id}:
+    get:
+      tags: [Trips, Realtime]
+      summary: Get a trip by id (CORE-TRACK-001 / GATE-REALTIME-001 polling fallback).
+      description: >
+        Authorized for passenger, driver, transporter or announcement publisher.
+        Includes last known driver position when `driverProfileId` is set.
+        Use as HTTP polling fallback when realtime SSE/WebSocket is unavailable.
+      operationId: getTrip
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Trip detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not a trip participant (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/trips/{id}/status:
     patch:
       tags: [Trips]
-      summary: Update trip status.
+      summary: Update trip status (CORE-TRACK-001).
+      description: >
+        Driver/transporter/publisher only. Validates FSM transitions, inserts a trip_event,
+        notifies participants (`STATUS_CHANGE`) and publishes realtime `trip.status.updated`.
       operationId: updateTripStatus
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3122,21 +3450,70 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/UpdateTripStatusRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Trip updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not allowed to mutate (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Invalid transition (`INVALID_TRIP_TRANSITION`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/trips/{id}/complete:
     post:
       tags: [Trips]
-      summary: Complete a trip.
+      summary: Complete a trip (CORE-TRACK-001).
+      description: Transitions to COMPLETED when allowed (typically from ON_BOARD).
       operationId: completeTrip
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Trip completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not allowed to mutate (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Not completable (`TRIP_NOT_COMPLETABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/trips/{id}/ratings:
     post:
       tags: [Trips]
@@ -3156,20 +3533,39 @@ paths:
           $ref: '#/components/responses/Accepted'
   /api/v1/trips/{id}/events:
     get:
-      tags: [Realtime]
-      summary: Subscribe to trip events as server-sent events.
-      description: Represents Subscribe trip.{tripId} from the sequence diagrams.
-      operationId: subscribeTripEvents
+      tags: [Trips, Realtime]
+      summary: List trip status events for polling fallback (CORE-TRACK-001 / GATE-REALTIME-001).
+      description: >
+        Returns timestamped trip_events for the trip. Prefer realtime channel `trip` or
+        `trip:{uuid}` (`trip.status.updated`) when available; this endpoint is the HTTP
+        polling fallback for degraded networks.
+      operationId: listTripEvents
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
       responses:
         '200':
-          description: Event stream for the trip.
+          description: Chronological trip events.
           content:
-            text/event-stream:
+            application/json:
               schema:
-                $ref: '#/components/schemas/ServerSentEvent'
+                type: array
+                items:
+                  $ref: '#/components/schemas/TripEventResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not a trip participant (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/support/tickets:
     post:
       tags: [Support]
@@ -3320,8 +3716,39 @@ paths:
   /api/v1/admin/ops/overview:
     get:
       tags: [Admin]
-      summary: Get operations overview.
+      summary: Get operations overview (ADMIN-OPS-001 implemented).
       operationId: getOperationsOverview
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/users:
+    get:
+      tags: [Admin]
+      summary: List users for operations (ADMIN-OPS-001 implemented).
+      operationId: listOperationalUsers
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/users/{id}:
+    get:
+      tags: [Admin]
+      summary: Get user detail with profiles (ADMIN-OPS-001 implemented).
+      operationId: getOperationalUser
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/announcements:
+    get:
+      tags: [Admin]
+      summary: List announcements for operations (ADMIN-OPS-001 implemented).
+      operationId: listOperationalAnnouncements
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -3330,8 +3757,21 @@ paths:
   /api/v1/admin/ops/bookings:
     get:
       tags: [Admin]
-      summary: Search operational bookings.
+      summary: Search operational bookings (ADMIN-OPS-001 implemented).
       operationId: searchOperationalBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/payments:
+    get:
+      tags: [Admin]
+      summary: List payments for operations (ADMIN-OPS-001 implemented).
+      description: >
+        Operational payment list. Detailed reconciliation remains available at
+        `/api/v1/admin/payments/transactions`.
+      operationId: listOperationalPayments
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:

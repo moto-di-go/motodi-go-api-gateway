@@ -129,6 +129,31 @@ class GatewayRateLimitingTests {
 		assertThat(CAPTURED_PATHS.poll(2, TimeUnit.SECONDS)).isEqualTo("/api/v1/wallet/deposits");
 	}
 
+	@Test
+	void gpsPositionUpdatesAreRateLimitedPerJwtSubject() throws Exception {
+		HttpHeaders firstHeaders = driverAuthHeaders("subject-gps-rate-limit");
+		firstHeaders.set("X-Forwarded-For", "10.1.0.1");
+		HttpHeaders secondHeaders = driverAuthHeaders("subject-gps-rate-limit");
+		secondHeaders.set("X-Forwarded-For", "10.1.0.2");
+		HttpHeaders otherDriverHeaders = driverAuthHeaders("other-subject-gps-rate-limit");
+		otherDriverHeaders.set("X-Forwarded-For", "10.1.0.2");
+
+		var first = this.restTemplate.exchange(url("/api/v1/drivers/position"), HttpMethod.PUT,
+				new HttpEntity<>("{}", firstHeaders), String.class);
+		var second = this.restTemplate.exchange(url("/api/v1/drivers/position"), HttpMethod.PUT,
+				new HttpEntity<>("{}", secondHeaders), String.class);
+		var otherDriver = this.restTemplate.exchange(url("/api/v1/drivers/position"), HttpMethod.PUT,
+				new HttpEntity<>("{}", otherDriverHeaders), String.class);
+
+		assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		assertThat(second.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+		assertThat(second.getBody()).contains("\"errorCode\":\"RATE_LIMITED\"");
+		assertThat(second.getHeaders().getFirst("Retry-After")).isEqualTo("2");
+		assertThat(second.getHeaders().getFirst("X-RateLimit-Limit")).isEqualTo("1");
+		assertThat(otherDriver.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		assertThat(CAPTURED_PATHS.poll(2, TimeUnit.SECONDS)).isEqualTo("/api/v1/drivers/position");
+	}
+
 	@DynamicPropertySource
 	static void dynamicProperties(DynamicPropertyRegistry registry) {
 		registry.add("motodigo.gateway.backend-core-base-url", () -> "http://localhost:" + backendCorePort());
@@ -150,6 +175,9 @@ class GatewayRateLimitingTests {
 		registry.add("motodigo.gateway.rate-limit.callback.capacity", () -> "1");
 		registry.add("motodigo.gateway.rate-limit.callback.refill-tokens", () -> "1");
 		registry.add("motodigo.gateway.rate-limit.callback.refill-period-seconds", () -> "60");
+		registry.add("motodigo.gateway.rate-limit.gps.capacity", () -> "1");
+		registry.add("motodigo.gateway.rate-limit.gps.refill-tokens", () -> "1");
+		registry.add("motodigo.gateway.rate-limit.gps.refill-period-seconds", () -> "2");
 		registry.add("motodigo.gateway.integrations.mobile-money.providers.mtn.hmac-secret", () -> "test-mtn-hmac-secret-value");
 		registry.add("motodigo.gateway.integrations.mobile-money.providers.orange.hmac-secret", () -> "test-orange-hmac-secret-value");
 		registry.add("motodigo.gateway.integrations.mobile-money.providers.aggregator.hmac-secret",
@@ -204,11 +232,21 @@ class GatewayRateLimitingTests {
 
 	private static HttpHeaders authHeaders(String subject) {
 		HttpHeaders headers = new HttpHeaders();
-		headers.setBearerAuth(jwt(subject));
+		headers.setBearerAuth(jwt(subject, List.of("PASSENGER_PAY")));
+		return headers;
+	}
+
+	private static HttpHeaders driverAuthHeaders(String subject) {
+		HttpHeaders headers = new HttpHeaders();
+		headers.setBearerAuth(jwt(subject, List.of("MOTOTAXI_SHARE_POSITION")));
 		return headers;
 	}
 
 	private static String jwt(String subject) {
+		return jwt(subject, List.of("PASSENGER_PAY"));
+	}
+
+	private static String jwt(String subject, List<String> permissions) {
 		try {
 			Instant now = Instant.now();
 			JWTClaimsSet claims = new JWTClaimsSet.Builder()
@@ -219,7 +257,7 @@ class GatewayRateLimitingTests {
 					.expirationTime(Date.from(now.plusSeconds(900)))
 					.claim("sid", UUID.randomUUID().toString())
 					.claim("roles", List.of("PASSENGER"))
-					.claim("permissions", List.of("PASSENGER_PAY"))
+					.claim("permissions", permissions)
 					.claim("activeProfileType", "PASSENGER")
 					.build();
 			SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);

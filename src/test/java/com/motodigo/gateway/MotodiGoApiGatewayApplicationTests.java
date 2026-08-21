@@ -276,6 +276,43 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void realtimeSseRouteExistsAndRequiresJwt() {
+		var unauthorized = this.restTemplate.getForEntity(url("/api/v1/realtime/sse"), String.class);
+		assertThat(unauthorized.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(unauthorized.getBody()).contains("\"errorCode\":\"AUTH_REQUIRED\"");
+	}
+
+	@Test
+	void realtimeSseIsRoutedToBackendCoreWithJwt() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/realtime/sse?channel=trip"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/realtime/sse");
+		assertThat(request.authorization()).startsWith("Bearer ");
+		assertThat(request.correlationId()).isNotBlank();
+	}
+
+	@Test
+	void realtimeChannelsIsRoutedToBackendCoreWithJwt() throws Exception {
+		var response = this.restTemplate.exchange(
+				url("/api/v1/realtime/channels"),
+				HttpMethod.GET,
+				new HttpEntity<>("", authHeaders()),
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/realtime/channels");
+	}
+
+	@Test
 	void kycUploadIsRoutedWithAuthenticatedJwtEvenBeforeRefreshedProfilePermissions() throws Exception {
 		HttpHeaders headers = authHeaders(List.of("PROFILE_READ"));
 
@@ -653,13 +690,19 @@ class MotodiGoApiGatewayApplicationTests {
 				"/api/v1/admin/moderation/queue",
 				"/api/v1/admin/moderation/actions",
 				"/api/v1/admin/ops/overview",
+				"/api/v1/admin/ops/users",
+				"/api/v1/admin/ops/users/{id}",
+				"/api/v1/admin/ops/announcements",
 				"/api/v1/admin/ops/bookings",
+				"/api/v1/admin/ops/payments",
 				"/api/v1/admin/pricing/rules",
 				"/api/v1/admin/gis/layers",
 				"/api/v1/admin/gis/photon",
 				"/api/v1/admin/gis/photon/update",
 				"/api/v1/gis/layers",
 				"/api/v1/realtime/sse",
+				"/api/v1/realtime/channels",
+				"/api/v1/realtime/ws",
 				"/api/v1/drivers/availability",
 				"/api/v1/admin/kpi",
 				"/api/v1/admin/kpi/export.csv",

@@ -82,7 +82,9 @@ public record GatewayProperties(
 			@Valid @NotNull
 			Bucket payment,
 			@Valid @NotNull
-			Bucket callback) {
+			Bucket callback,
+			@Valid @NotNull
+			Bucket gps) {
 		public RateLimit {
 			if (auth == null) {
 				auth = new Bucket(5, 1, 120);
@@ -96,11 +98,15 @@ public record GatewayProperties(
 			if (callback == null) {
 				callback = new Bucket(60, 60, 60);
 			}
+			if (gps == null) {
+				// Default: 1 position update every 2 seconds per driver identity.
+				gps = new Bucket(1, 1, 2);
+			}
 		}
 
 		static RateLimit defaults() {
 			return new RateLimit(true, new Bucket(5, 1, 120), new Bucket(5, 1, 120), new Bucket(10, 10, 60),
-					new Bucket(60, 60, 60));
+					new Bucket(60, 60, 60), new Bucket(1, 1, 2));
 		}
 	}
 

@@ -15,10 +15,11 @@ The following prefixes are routed to `backend-core`:
 - `/api/v1/drivers/**`
 - `/api/v1/urban/**` — recherche urbaine, autocomplete Photon+lieux métier, preview/matching Valhalla.
 - `/api/v1/pricing/**`
+- `/api/v1/realtime/**` — GATE-REALTIME-001 (see below).
 - `/api/v1/intercity/**`
 - `/api/v1/bookings/**` — CORE-BOOK-001: `GET /api/v1/bookings/mine`, `GET /api/v1/bookings/{id}`,
   `POST /api/v1/bookings/{id}/confirm`, `POST /api/v1/bookings/{id}/cancel`. Subscription create/list
-  also live under `/api/v1/intercity/announcements/{id}/bookings`. Ride pay remains CORE-PAY-002:
+  also live under `/api/v1/intercity/announcements/{id}/bookings`. CORE-PAY-002 (implemented):
   `POST /api/v1/bookings/{id}/pay`.
 - `/api/v1/wallet/**` — CORE-WALLET-001 reads: `GET /api/v1/wallet`, `GET /api/v1/wallet/ledger`. CORE-PAY-001 deposits: `POST /api/v1/wallet/deposits`, `GET /api/v1/wallet/deposits/{id}`.
 - `/api/v1/payments/**`
@@ -58,6 +59,21 @@ Wallet credit and deposit initiation are handled by CORE-PAY-001 in backend-core
   (`fallback: true`, empty `recommendations`) from `/__gateway/ai/fallback`.
 - Backend-core routes use a separate circuit breaker without a business fallback.
 
+## Realtime Routing (GATE-REALTIME-001)
+
+- `/api/v1/realtime/**` is proxied to `backend-core` on a dedicated circuit breaker
+  (`backendCoreRealtime`) with a long TimeLimiter (default 35m) so SSE is not cut by the
+  short REST timeout (`backendCore`, default 5s).
+- Gateway MVC streaming uses `text/event-stream` as a streaming media type, a small
+  streaming buffer, and `SseFlushFilter` so SSE chunks flush promptly.
+- JWT is required (`SecurityConfig`); correlation id is propagated like other core routes.
+- GPS publish rate limit: dedicated Redis bucket on `PUT`/`PATCH` `/api/v1/drivers/position`
+  (default 1 request / 2 seconds per JWT subject).
+- Polling fallback when realtime is degraded:
+  - `GET /api/v1/drivers/position`
+  - `GET /api/v1/trips/{id}`
+  - `GET /api/v1/trips/{id}/events`
+
 ## Correlation Id
 
 Every response includes `X-Correlation-Id`.
@@ -81,4 +97,5 @@ The test and local API documentation entrypoints are versioned:
 
 `GATE-PLAT-001` implements the secure platform baseline: versioned routes, CORS, security headers, correlation id, health endpoints and API docs.
 `GATE-AUTH-001` covers JWT validation, RBAC and rate limiting.
+`GATE-REALTIME-001` covers realtime SSE/WS proxying, GPS rate limits and polling fallbacks.
 `GATE-INTEGRATIONS-001` covers Mobile Money callback edge verification, AI routing resilience and gateway AI fallback.
