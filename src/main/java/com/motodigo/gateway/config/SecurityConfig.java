@@ -129,6 +129,7 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.PUT, "/api/v1/admin/gis/layers", "/api/v1/admin/gis/layers/*")
 								.hasAuthority("GIS_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/kpi", "/api/v1/admin/kpi/export.csv").hasAuthority("KPI_READ")
+						.requestMatchers(HttpMethod.GET, "/api/v1/agency/**").hasAuthority("AGENCY_STATS_READ")
 						.requestMatchers("/api/v1/profiles/**",
 								"/api/v1/pricing/**",
 								"/api/v1/intercity/**",

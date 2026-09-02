@@ -42,6 +42,11 @@ tags:
       bookings and payments lists with CSV export under `/api/v1/admin/ops/**`
       (permission `OPERATIONS_READ`). Payment reconciliation remains available at
       `/api/v1/admin/payments/transactions`.
+  - name: Agency
+    description: >
+      ADMIN-AGENCY-001 (implemented): agency-scoped overview, announcements and bookings
+      under `/api/v1/agency/**` (permission `AGENCY_STATS_READ`, active profile type AGENCY).
+      Not under `/api/v1/admin/**`.
   - name: Realtime
     description: >
       GATE-REALTIME-001 (implemented): gateway proxies `/api/v1/realtime/**` (SSE and WS path)
@@ -1112,7 +1117,12 @@ components:
           maxLength: 80
         billingPlan:
           type: string
+          enum: [STANDARD, PREMIUM]
           maxLength: 80
+        displayPriority:
+          type: integer
+          minimum: 0
+          description: Higher values surface the agency earlier (PREMIUM defaults to at least 1).
     AdminProfileDetails:
       type: object
       readOnly: true
@@ -2172,6 +2182,227 @@ components:
         data:
           type: object
           additionalProperties: true
+    BmcTargets:
+      type: object
+      required: [monthlyActiveUsers, activeVerifiedDrivers, slaAvailabilityPercent]
+      properties:
+        monthlyActiveUsers:
+          type: integer
+          example: 10000
+        activeVerifiedDrivers:
+          type: integer
+          example: 2000
+        slaAvailabilityPercent:
+          type: number
+          format: double
+          example: 99.9
+    KpiSnapshot:
+      type: object
+      description: Aggregated platform KPI snapshot for a period (no PII).
+      required:
+        - id
+        - periodStart
+        - periodEnd
+        - monthlyActiveUsers
+        - activeVerifiedDrivers
+        - reservationCount
+        - walletVolumeFcfa
+        - mtnMomoVolumeFcfa
+        - orangeMoneyVolumeFcfa
+        - bmcTargetsM6
+        - bmcTargetsM12
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        monthlyActiveUsers:
+          type: integer
+        activeVerifiedDrivers:
+          type: integer
+        reservationCount:
+          type: integer
+        reservationsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        walletVolumeFcfa:
+          type: number
+          format: double
+        mtnMomoVolumeFcfa:
+          type: number
+          format: double
+        orangeMoneyVolumeFcfa:
+          type: number
+          format: double
+        slaAvailability:
+          type: number
+          format: double
+          nullable: true
+          description: Offline sync success proxy percentage (SYNCED / SYNCED+FAILED).
+        avgSigSyncSeconds:
+          type: number
+          format: double
+          nullable: true
+        aiUsageRate:
+          type: number
+          format: double
+          nullable: true
+          description: Null until AI-METRICS-001 persists ai_usage_metrics rows.
+        bmcTargetsM6:
+          $ref: '#/components/schemas/BmcTargets'
+        bmcTargetsM12:
+          $ref: '#/components/schemas/BmcTargets'
+        createdAt:
+          type: string
+          format: date-time
+    AgencyOverview:
+      type: object
+      description: Agency-scoped stats for the active AGENCY profile (no admin authority required).
+      required:
+        - activeAnnouncements
+        - reservationCount
+        - billingPlan
+        - billingPlanPriceFcfa
+        - displayPriority
+        - reservationsByStatus
+        - periodStart
+        - periodEnd
+      properties:
+        activeAnnouncements:
+          type: integer
+          format: int64
+        reservationCount:
+          type: integer
+          format: int64
+        averageFillRate:
+          type: number
+          format: double
+          nullable: true
+          description: Average of (total_seats - remaining_seats) / total_seats; null if none.
+        billingPlan:
+          type: string
+          enum: [STANDARD, PREMIUM]
+        billingPlanPriceFcfa:
+          type: integer
+          description: BMC agency transport monthly fee (10 000 FCFA).
+        displayPriority:
+          type: integer
+        legalName:
+          type: string
+          nullable: true
+        reservationsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+    AgencyAnnouncementSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        publisherProfileId:
+          type: string
+          format: uuid
+        departureCity:
+          type: string
+        destinationCity:
+          type: string
+        departureDate:
+          type: string
+          format: date
+          nullable: true
+        departureTime:
+          type: string
+          nullable: true
+        priceFcfa:
+          type: number
+        totalSeats:
+          type: integer
+        remainingSeats:
+          type: integer
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    AgencyAnnouncementPage:
+      type: object
+      required: [announcements, page, size, hasMore]
+      properties:
+        announcements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgencyAnnouncementSummary'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    AgencyBookingSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        announcementId:
+          type: string
+          format: uuid
+        passengerProfileId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        seatsRequested:
+          type: integer
+        contactPhone:
+          type: string
+          nullable: true
+          description: Masked passenger contact phone for agency view.
+        requestedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    AgencyBookingPage:
+      type: object
+      required: [bookings, page, size, hasMore]
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgencyBookingSummary'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
   responses:
     Accepted:
       description: Request accepted.
@@ -4821,23 +5052,172 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+  /api/v1/agency/overview:
+    get:
+      tags: [Agency]
+      summary: Get agency overview for the active AGENCY profile (ADMIN-AGENCY-001).
+      operationId: getAgencyOverview
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period start (Africa/Douala). Defaults to first day of current month.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period end inclusive (Africa/Douala). Defaults to today.
+      responses:
+        '200':
+          description: Agency overview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgencyOverview'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/agency/announcements:
+    get:
+      tags: [Agency]
+      summary: List announcements owned by the active agency profile.
+      operationId: listAgencyAnnouncements
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated agency announcements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgencyAnnouncementPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/agency/bookings:
+    get:
+      tags: [Agency]
+      summary: List bookings for announcements owned by the active agency profile.
+      operationId: listAgencyBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated agency bookings (passenger phones masked).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgencyBookingPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kpi:
     get:
       tags: [Admin]
-      summary: Get platform KPI snapshots.
+      summary: Get aggregated platform KPI for a period (CORE-ANALYTICS-001).
       operationId: getKpiSnapshots
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period start (Africa/Douala). Defaults to first day of current month.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period end inclusive (Africa/Douala). Defaults to today.
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [7d, 30d, month]
+          description: Optional preset that overrides from/to.
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Aggregated KPI snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KpiSnapshot'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kpi/export.csv:
     get:
       tags: [Admin]
-      summary: Export KPI snapshots as CSV.
+      summary: Export KPI snapshot as CSV (aligned with visible aggregates).
       operationId: exportKpiCsv
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [7d, 30d, month]
       responses:
         '200':
           description: CSV export.
@@ -4845,6 +5225,10 @@ paths:
             text/csv:
               schema:
                 type: string
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /actuator/health:
     get:
       tags: [Health]

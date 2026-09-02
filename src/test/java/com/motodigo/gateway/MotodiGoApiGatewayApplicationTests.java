@@ -716,6 +716,9 @@ class MotodiGoApiGatewayApplicationTests {
 				"/api/v1/drivers/availability",
 				"/api/v1/admin/kpi",
 				"/api/v1/admin/kpi/export.csv",
+				"/api/v1/agency/overview",
+				"/api/v1/agency/announcements",
+				"/api/v1/agency/bookings",
 				"/actuator/health",
 				"/actuator/health/readiness",
 				"/actuator/health/liveness");

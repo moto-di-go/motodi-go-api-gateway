@@ -37,6 +37,7 @@ class GatewayRoutesConfig {
 			"/api/v1/notifications/**",
 			"/api/v1/support/**",
 			"/api/v1/integrations/mobile-money/**",
+			"/api/v1/agency/**",
 			"/api/v1/admin/**"
 	};
 
