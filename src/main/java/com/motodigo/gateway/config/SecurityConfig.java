@@ -104,6 +104,7 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/confirm").hasAuthority("INTERCITY_BOOKING_CONFIRM")
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/cancel").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/bookings/*/pay", "/api/v1/nfc/tokens").hasAuthority("PASSENGER_PAY")
+						.requestMatchers(HttpMethod.GET, "/api/v1/nfc/eligibility", "/api/v1/nfc/tokens/*").authenticated()
 						.requestMatchers(HttpMethod.GET,
 								"/api/v1/admin/kyc/pending",
 								"/api/v1/admin/kyc/reviews",
@@ -112,8 +113,11 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.POST,
 								"/api/v1/admin/kyc/*/decision",
 								"/api/v1/admin/kyc/documents/*/decision").hasAuthority("KYC_DECIDE")
-						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue").hasAuthority("MODERATION_READ")
+						.requestMatchers(HttpMethod.GET, "/api/v1/admin/moderation/queue",
+								"/api/v1/admin/support/tickets",
+								"/api/v1/admin/support/tickets/*").hasAuthority("MODERATION_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/moderation/actions").hasAuthority("MODERATION_WRITE")
+						.requestMatchers(HttpMethod.PATCH, "/api/v1/admin/support/tickets/*").hasAuthority("MODERATION_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/ops/**").hasAuthority("OPERATIONS_READ")
 						.requestMatchers(HttpMethod.GET, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_READ")
 						.requestMatchers(HttpMethod.POST, "/api/v1/admin/pricing/rules").hasAuthority("PRICING_WRITE")
@@ -131,6 +135,7 @@ class SecurityConfig {
 								"/api/v1/ai/**",
 								"/api/v1/wallet/**",
 								"/api/v1/payments/**",
+								"/api/v1/receipts/**",
 								"/api/v1/offline/**",
 								"/api/v1/trips/**",
 								"/api/v1/support/**",

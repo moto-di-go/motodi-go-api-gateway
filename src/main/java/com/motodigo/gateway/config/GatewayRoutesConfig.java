@@ -30,6 +30,7 @@ class GatewayRoutesConfig {
 			"/api/v1/bookings/**",
 			"/api/v1/wallet/**",
 			"/api/v1/payments/**",
+			"/api/v1/receipts/**",
 			"/api/v1/nfc/**",
 			"/api/v1/trips/**",
 			"/api/v1/offline/**",
