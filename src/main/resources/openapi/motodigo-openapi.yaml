@@ -17,19 +17,44 @@ tags:
       CORE-BOOK-001 (implemented): passenger subscription (`PENDING`), transporter/agency confirmation
       with transactional seat locks (`PENDING_PAYMENT`), status visibility for both parties,
       cancellation rules, and automatic expiration of unpaid/unconfirmed bookings.
-      Ride payment after lock is CORE-PAY-002 (future): `POST /api/v1/bookings/{id}/pay`.
+      CORE-PAY-002 (implemented): wallet ride payment after lock — `POST /api/v1/bookings/{id}/pay`
+      (atomic passenger debit / transporter credit, booking `PAID`, receipt, then CORE-TRACK-001
+      intercity trip creation in `CONFIRMED` linked via `bookings.trip_id`).
   - name: AI
   - name: Wallet/Payments
     description: >
       CORE-WALLET-001 (implemented): account-scoped wallet balance and immutable ledger reads.
       The wallet belongs to the user account (JWT subject), not the active profile.
       CORE-PAY-001 (implemented): Mobile Money deposit initiation, signed callback processing and
-      admin reconciliation by external reference. CORE-PAY-002 (future): ride payments.
+      admin reconciliation by external reference.
+      CORE-PAY-002 (implemented): wallet ride payments for `PENDING_PAYMENT` bookings with receipt.
   - name: Offline/NFC
   - name: Trips
+    description: >
+      CORE-TRACK-001 (implemented): intercity trip lifecycle after ride payment —
+      `GET /api/v1/trips/active`, `GET /api/v1/trips/{id}`, `PATCH /api/v1/trips/{id}/status`,
+      `POST /api/v1/trips/{id}/complete`, and `GET /api/v1/trips/{id}/events` (polling fallback).
+      Status FSM: CONFIRMED → APPROACHING → ON_BOARD → COMPLETED (CANCELLED from non-terminal).
   - name: Support
   - name: Admin
+    description: >
+      ADMIN-OPS-001 (implemented): operations overview, users/profiles, announcements,
+      bookings and payments lists with CSV export under `/api/v1/admin/ops/**`
+      (permission `OPERATIONS_READ`). Payment reconciliation remains available at
+      `/api/v1/admin/payments/transactions`.
+  - name: Agency
+    description: >
+      ADMIN-AGENCY-001 (implemented): agency-scoped overview, announcements and bookings
+      under `/api/v1/agency/**` (permission `AGENCY_STATS_READ`, active profile type AGENCY).
+      Not under `/api/v1/admin/**`.
   - name: Realtime
+    description: >
+      GATE-REALTIME-001 (implemented): gateway proxies `/api/v1/realtime/**` (SSE and WS path)
+      to backend-core with JWT auth, long SSE timeout, and streaming flush. Prefer channels
+      `trip` (filter by userId) or `trip:{uuid}` (filter by tripId) for `trip.status.updated`.
+      Polling fallback when realtime is unavailable: `GET /api/v1/drivers/position`,
+      `GET /api/v1/trips/{id}`, `GET /api/v1/trips/{id}/events`. GPS publish is rate-limited
+      at the gateway (`PUT`/`PATCH` `/api/v1/drivers/position`, default 1 req / 2s).
   - name: Health
 components:
   securitySchemes:
@@ -97,7 +122,7 @@ components:
       description: >
         Unique electronic wallet of the authenticated account (one wallet per user_id).
         Currency is always XAF (FCFA). Switching the active profile does not change this wallet.
-      required: [id, currency, currentBalance, status, createdAt]
+      required: [id, currency, currentBalance, heldBalance, availableBalance, status, createdAt]
       properties:
         id:
           type: string
@@ -113,11 +138,30 @@ components:
           minimum: 0
           description: Settled balance derived from CREDIT minus DEBIT ledger entries.
           example: 15000.00
+        heldBalance:
+          type: number
+          format: double
+          minimum: 0
+          description: Amount reserved by open NFC holds (CORE-NFC-001).
+        availableBalance:
+          type: number
+          format: double
+          minimum: 0
+          description: currentBalance minus heldBalance.
         status:
           $ref: '#/components/schemas/WalletStatus'
         createdAt:
           type: string
           format: date-time
+        nfcOfflineQuotaRemaining:
+          type: number
+          format: double
+          nullable: true
+          description: Remaining offline NFC envelope if provisioned.
+        nfcOfflineQuotaExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
     LedgerEntryResponse:
       type: object
       description: Immutable append-only ledger movement (audited, never updated in place).
@@ -401,7 +445,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Optional linked trip id (populated by later tracking/payment flows).
+          description: Optional linked trip id (populated by CORE-TRACK-001 after ride payment).
         status:
           $ref: '#/components/schemas/BookingStatus'
         seatsRequested:
@@ -449,6 +493,116 @@ components:
           maximum: 100
         hasMore:
           type: boolean
+    TripStatus:
+      type: string
+      description: Operational trip status (CORE-TRACK-001 FSM).
+      enum: [CONFIRMED, APPROACHING, ON_BOARD, COMPLETED, CANCELLED]
+    TripType:
+      type: string
+      enum: [URBAN, INTERCITY]
+    TripResponse:
+      type: object
+      description: >
+        Active or historical trip (CORE-TRACK-001). Intercity trips are created in CONFIRMED
+        after successful wallet ride payment and linked via `bookings.trip_id`.
+      required: [id, type, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/TripType'
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        passengerProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        driverProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        transporterProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        bookingId:
+          type: string
+          format: uuid
+          nullable: true
+        announcementPublisherProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        departureCity:
+          type: string
+          nullable: true
+        destinationCity:
+          type: string
+          nullable: true
+        ptRamassage:
+          type: string
+          nullable: true
+        plannedDepartureAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finalPriceFcfa:
+          type: number
+          format: double
+          nullable: true
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        driverPosition:
+          type: object
+          nullable: true
+          description: Last known driver GPS when `driverProfileId` is set.
+          additionalProperties: true
+    ActiveTripsResponse:
+      type: object
+      required: [trips]
+      properties:
+        trips:
+          type: array
+          items:
+            $ref: '#/components/schemas/TripResponse'
+    TripEventResponse:
+      type: object
+      required: [id, tripId, status, label, occurredAt, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        label:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+    UpdateTripStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/TripStatus'
     WideningSuggestion:
       type: object
       description: Deterministic suggestion to broaden search criteria when the result set is empty.
@@ -963,7 +1117,12 @@ components:
           maxLength: 80
         billingPlan:
           type: string
+          enum: [STANDARD, PREMIUM]
           maxLength: 80
+        displayPriority:
+          type: integer
+          minimum: 0
+          description: Higher values surface the agency earlier (PREMIUM defaults to at least 1).
     AdminProfileDetails:
       type: object
       readOnly: true
@@ -1107,6 +1266,59 @@ components:
           type: string
           format: date-time
           nullable: true
+    RidePaymentResponse:
+      type: object
+      description: Confirmed wallet ride payment for a booking (CORE-PAY-002).
+      required: [id, bookingId, status, amount, currency, provider, initiatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        bookingId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [INITIATED, CONFIRMED, FAILED, EXPIRED, REFUNDED]
+        amount:
+          type: number
+          format: double
+          description: Total charged to the passenger (`priceFcfa * seatsRequested`).
+        platformFee:
+          type: number
+          format: double
+          nullable: true
+        transporterAmount:
+          type: number
+          format: double
+          nullable: true
+          description: Amount credited to the transporter wallet after platform fee.
+        currency:
+          type: string
+          enum: [XAF]
+        provider:
+          type: string
+          enum: [WALLET]
+        initiatedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        receiptId:
+          type: string
+          format: uuid
+          nullable: true
+        receiptNumber:
+          type: string
+          nullable: true
+        receiptPdfUrl:
+          type: string
+          nullable: true
+          description: Placeholder URL until PDF generation is available.
+        booking:
+          $ref: '#/components/schemas/BookingResponse'
     MobileMoneyCallbackRequest:
       type: object
       description: >
@@ -1122,6 +1334,564 @@ components:
         failureReason:
           type: string
           nullable: true
+    NfcEligibilityResponse:
+      type: object
+      required: [eligible, walletActive, availableBalance, maxAmount, reasons]
+      properties:
+        eligible:
+          type: boolean
+        walletActive:
+          type: boolean
+        availableBalance:
+          type: number
+          format: double
+        maxAmount:
+          type: number
+          format: double
+        offlineQuotaRemaining:
+          type: number
+          format: double
+          nullable: true
+        offlineQuotaExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        reasons:
+          type: array
+          items:
+            type: string
+    NfcTokenIssueRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          enum: [XAF]
+        bookingId:
+          type: string
+          format: uuid
+          nullable: true
+        tripId:
+          type: string
+          format: uuid
+          nullable: true
+        receiverWalletId:
+          type: string
+          format: uuid
+          nullable: true
+    NfcTokenResponse:
+      type: object
+      required: [id, jti, signedToken, amount, currency, status, issuedAt, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        jti:
+          type: string
+          format: uuid
+        signedToken:
+          type: string
+          description: Compact signed payload for HCE/QR transfer.
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+          enum: [XAF]
+        status:
+          type: string
+          enum: [ISSUED, EXCHANGED, PENDING_SYNC, CONSUMED, EXPIRED, REJECTED]
+        bookingId:
+          type: string
+          format: uuid
+          nullable: true
+        tripId:
+          type: string
+          format: uuid
+          nullable: true
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        consumedAt:
+          type: string
+          format: date-time
+          nullable: true
+    OfflineSyncRequest:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineOperationInput'
+    OfflineOperationInput:
+      type: object
+      required: [type, idempotencyKey, payload]
+      properties:
+        type:
+          type: string
+          enum: [BOOKING_CREATE, BOOKING_CANCEL, NFC_PAYMENT, PROFILE_UPDATE, SUPPORT_TICKET]
+        idempotencyKey:
+          type: string
+          maxLength: 180
+        payload:
+          type: object
+          additionalProperties: true
+        queuedAt:
+          type: string
+          format: date-time
+          nullable: true
+    OfflineSyncResponse:
+      type: object
+      required: [batchId, status, results]
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [STARTED, PARTIAL_SUCCESS, COMPLETED, FAILED]
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineSyncItemResult'
+    OfflineSyncItemResult:
+      type: object
+      required: [idempotencyKey, outcome]
+      properties:
+        idempotencyKey:
+          type: string
+        outcome:
+          type: string
+          enum: [SYNCED, IGNORED, CONFLICT, FAILED]
+        operationId:
+          type: string
+          format: uuid
+          nullable: true
+        conflictCode:
+          type: string
+          nullable: true
+          enum: [TOKEN_EXPIRED, TOKEN_ALREADY_CONSUMED, INVALID_SIGNATURE, AMOUNT_MISMATCH, TRIP_MISMATCH, SEAT_EXPIRED, BOOKING_CANCELLED]
+        message:
+          type: string
+          nullable: true
+    OfflineOperationPageResponse:
+      type: object
+      required: [operations, page, size, hasMore]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineOperationResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    OfflineOperationResponse:
+      type: object
+      required: [id, type, status, idempotencyKey, queuedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, SYNCING, SYNCED, CONFLICT, FAILED]
+        idempotencyKey:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        queuedAt:
+          type: string
+          format: date-time
+        syncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        conflictCode:
+          type: string
+          nullable: true
+        conflictMessage:
+          type: string
+          nullable: true
+    OfflineMapAreaResponse:
+      type: object
+      required: [id, areaName, sizeBytes, downloadUrl, expiresAt]
+      properties:
+        id:
+          type: string
+        areaName:
+          type: string
+        boundingBoxWkt:
+          type: string
+          nullable: true
+        sizeBytes:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        downloaded:
+          type: boolean
+          default: false
+    RatingRequest:
+      type: object
+      required: [ratedProfileId, stars]
+      properties:
+        ratedProfileId:
+          type: string
+          format: uuid
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 1000
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+            enum: [PONCTUEL, CONDUITE_SURE, PRIX_RESPECTE, VEHICULE_PROPRE, PROBLEME_ITINERAIRE]
+    RatingResponse:
+      type: object
+      required: [id, tripId, ratedProfileId, stars, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        ratedProfileId:
+          type: string
+          format: uuid
+        stars:
+          type: integer
+        comment:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [PUBLISHED, FLAGGED, HIDDEN]
+        averageRating:
+          type: number
+          format: double
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    TripHistoryPageResponse:
+      type: object
+      required: [items, page, size, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TripHistoryItem'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    TripHistoryItem:
+      type: object
+      required: [id, kind, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [TRIP, BOOKING]
+        tripType:
+          type: string
+          enum: [URBAN, INTERCITY]
+          nullable: true
+        status:
+          type: string
+        origin:
+          type: string
+          nullable: true
+        destination:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: double
+          nullable: true
+        paymentStatus:
+          type: string
+          nullable: true
+        receiptId:
+          type: string
+          format: uuid
+          nullable: true
+        ratingSubmitted:
+          type: boolean
+          default: false
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ReceiptResponse:
+      type: object
+      required: [id, receiptNumber, amount, currency, issuedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        paymentTransactionId:
+          type: string
+          format: uuid
+          nullable: true
+        receiptNumber:
+          type: string
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+          enum: [XAF]
+        pdfUrl:
+          type: string
+          nullable: true
+        issuedAt:
+          type: string
+          format: date-time
+    ReceiptPageResponse:
+      type: object
+      required: [receipts, page, size, hasMore]
+      properties:
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    SupportTicketCreateRequest:
+      type: object
+      required: [category, priority, subject, message]
+      properties:
+        category:
+          type: string
+          enum: [TRANSPORT, PAYMENT, ACCOUNT, SECURITY, EMERGENCY]
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        subject:
+          type: string
+          maxLength: 180
+        message:
+          type: string
+        tripId:
+          type: string
+          format: uuid
+          nullable: true
+        bookingId:
+          type: string
+          format: uuid
+          nullable: true
+        paymentTransactionId:
+          type: string
+          format: uuid
+          nullable: true
+        offlineOperationId:
+          type: string
+          format: uuid
+          nullable: true
+    SupportTicketResponse:
+      type: object
+      required: [id, ticketNumber, category, priority, status, subject, message, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketNumber:
+          type: string
+        category:
+          type: string
+        priority:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, IN_PROGRESS, WAITING_USER, RESOLVED, CLOSED]
+        subject:
+          type: string
+        message:
+          type: string
+        tripId:
+          type: string
+          format: uuid
+          nullable: true
+        bookingId:
+          type: string
+          format: uuid
+          nullable: true
+        paymentTransactionId:
+          type: string
+          format: uuid
+          nullable: true
+        offlineOperationId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SupportTicketPageResponse:
+      type: object
+      required: [tickets, page, size, hasMore]
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupportTicketResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    SupportTicketMessageResponse:
+      type: object
+      required: [id, body, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        body:
+          type: string
+        authorUserId:
+          type: string
+          format: uuid
+          nullable: true
+        authorAdminProfileId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    SupportTicketDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/SupportTicketResponse'
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/SupportTicketMessageResponse'
+    AdminSupportTicketUpdateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [OPEN, IN_PROGRESS, WAITING_USER, RESOLVED, CLOSED]
+        reply:
+          type: string
+          nullable: true
+    ModerationQueuePageResponse:
+      type: object
+      required: [items, page, size, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModerationQueueItem'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    ModerationQueueItem:
+      type: object
+      required: [targetType, targetId, priority, reason, createdAt]
+      properties:
+        targetType:
+          type: string
+          enum: [RATING, SUPPORT_TICKET]
+        targetId:
+          type: string
+          format: uuid
+        priority:
+          type: string
+        reason:
+          type: string
+        preview:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    ModerationActionRequest:
+      type: object
+      required: [targetType, targetId, action]
+      properties:
+        targetType:
+          type: string
+          enum: [RATING, SUPPORT_TICKET, USER, PROFILE, ANNOUNCEMENT]
+        targetId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [HIDE, RESTORE, ESCALATE, CLOSE, SUSPEND]
+        reason:
+          type: string
+          nullable: true
+    ModerationActionResponse:
+      type: object
+      required: [id, targetType, targetId, action, actedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        targetType:
+          type: string
+        targetId:
+          type: string
+          format: uuid
+        action:
+          type: string
+        reason:
+          type: string
+          nullable: true
+        actedAt:
+          type: string
+          format: date-time
     AdminPaymentTransactionPageResponse:
       type: object
       required: [transactions, page, size, hasMore]
@@ -1307,7 +2077,7 @@ components:
           format: uuid
         engine:
           type: string
-            enum: [VALHALLA, LOCAL, DIRECT]
+          enum: [VALHALLA, LOCAL, DIRECT]
         polyline:
           type: string
         distanceKm:
@@ -1412,6 +2182,227 @@ components:
         data:
           type: object
           additionalProperties: true
+    BmcTargets:
+      type: object
+      required: [monthlyActiveUsers, activeVerifiedDrivers, slaAvailabilityPercent]
+      properties:
+        monthlyActiveUsers:
+          type: integer
+          example: 10000
+        activeVerifiedDrivers:
+          type: integer
+          example: 2000
+        slaAvailabilityPercent:
+          type: number
+          format: double
+          example: 99.9
+    KpiSnapshot:
+      type: object
+      description: Aggregated platform KPI snapshot for a period (no PII).
+      required:
+        - id
+        - periodStart
+        - periodEnd
+        - monthlyActiveUsers
+        - activeVerifiedDrivers
+        - reservationCount
+        - walletVolumeFcfa
+        - mtnMomoVolumeFcfa
+        - orangeMoneyVolumeFcfa
+        - bmcTargetsM6
+        - bmcTargetsM12
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        monthlyActiveUsers:
+          type: integer
+        activeVerifiedDrivers:
+          type: integer
+        reservationCount:
+          type: integer
+        reservationsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        walletVolumeFcfa:
+          type: number
+          format: double
+        mtnMomoVolumeFcfa:
+          type: number
+          format: double
+        orangeMoneyVolumeFcfa:
+          type: number
+          format: double
+        slaAvailability:
+          type: number
+          format: double
+          nullable: true
+          description: Offline sync success proxy percentage (SYNCED / SYNCED+FAILED).
+        avgSigSyncSeconds:
+          type: number
+          format: double
+          nullable: true
+        aiUsageRate:
+          type: number
+          format: double
+          nullable: true
+          description: Null until AI-METRICS-001 persists ai_usage_metrics rows.
+        bmcTargetsM6:
+          $ref: '#/components/schemas/BmcTargets'
+        bmcTargetsM12:
+          $ref: '#/components/schemas/BmcTargets'
+        createdAt:
+          type: string
+          format: date-time
+    AgencyOverview:
+      type: object
+      description: Agency-scoped stats for the active AGENCY profile (no admin authority required).
+      required:
+        - activeAnnouncements
+        - reservationCount
+        - billingPlan
+        - billingPlanPriceFcfa
+        - displayPriority
+        - reservationsByStatus
+        - periodStart
+        - periodEnd
+      properties:
+        activeAnnouncements:
+          type: integer
+          format: int64
+        reservationCount:
+          type: integer
+          format: int64
+        averageFillRate:
+          type: number
+          format: double
+          nullable: true
+          description: Average of (total_seats - remaining_seats) / total_seats; null if none.
+        billingPlan:
+          type: string
+          enum: [STANDARD, PREMIUM]
+        billingPlanPriceFcfa:
+          type: integer
+          description: BMC agency transport monthly fee (10 000 FCFA).
+        displayPriority:
+          type: integer
+        legalName:
+          type: string
+          nullable: true
+        reservationsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+    AgencyAnnouncementSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        publisherProfileId:
+          type: string
+          format: uuid
+        departureCity:
+          type: string
+        destinationCity:
+          type: string
+        departureDate:
+          type: string
+          format: date
+          nullable: true
+        departureTime:
+          type: string
+          nullable: true
+        priceFcfa:
+          type: number
+        totalSeats:
+          type: integer
+        remainingSeats:
+          type: integer
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    AgencyAnnouncementPage:
+      type: object
+      required: [announcements, page, size, hasMore]
+      properties:
+        announcements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgencyAnnouncementSummary'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
+    AgencyBookingSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        announcementId:
+          type: string
+          format: uuid
+        passengerProfileId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        seatsRequested:
+          type: integer
+        contactPhone:
+          type: string
+          nullable: true
+          description: Masked passenger contact phone for agency view.
+        requestedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    AgencyBookingPage:
+      type: object
+      required: [bookings, page, size, hasMore]
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgencyBookingSummary'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasMore:
+          type: boolean
   responses:
     Accepted:
       description: Request accepted.
@@ -1814,8 +2805,12 @@ paths:
           $ref: '#/components/responses/Accepted'
   /api/v1/drivers/position:
     put:
-      tags: [SIG]
-      summary: Publish the current driver position.
+      tags: [SIG, Realtime]
+      summary: Publish the current driver position (GATE-REALTIME-001 GPS rate limit).
+      description: >
+        Requires `MOTOTAXI_SHARE_POSITION`. Gateway applies a dedicated GPS token-bucket
+        (default capacity 1, refill 1 token every 2 seconds, keyed by JWT subject).
+        Excess requests return `429 RATE_LIMITED` with `Retry-After` / `X-RateLimit-*`.
       operationId: updateDriverPosition
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1828,9 +2823,13 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+        '429':
+          $ref: '#/components/responses/Error'
     get:
-      tags: [SIG]
-      summary: Read the last published driver position.
+      tags: [SIG, Realtime]
+      summary: Read the last published driver position (polling fallback).
+      description: >
+        HTTP polling fallback when SSE/WebSocket is unavailable (GATE-REALTIME-001).
       operationId: getDriverPosition
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -1855,14 +2854,76 @@ paths:
           $ref: '#/components/responses/Accepted'
   /api/v1/realtime/sse:
     get:
-      tags: [SIG]
-      summary: Subscribe to GPS realtime events via SSE.
+      tags: [SIG, Realtime]
+      summary: Subscribe to realtime events via SSE (GATE-REALTIME-001).
+      description: >
+        Proxied to backend-core with JWT. Query `channel` selects the feed:
+        geo (`yaounde`), `notification`, `trip` (user-scoped `trip.status.updated`),
+        or `trip:{uuid}` (trip-scoped). Gateway uses a long response timeout and flushes
+        `text/event-stream` chunks. On degraded networks, poll
+        `GET /api/v1/drivers/position`, `GET /api/v1/trips/{id}`, and
+        `GET /api/v1/trips/{id}/events`.
       operationId: subscribeRealtimeSse
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: channel
+          in: query
+          required: false
+          schema:
+            type: string
+            default: yaounde
+          description: Feed channel (`yaounde`, `notification`, `trip`, or `trip:{uuid}`).
+      responses:
+        '200':
+          description: Server-Sent Events stream (`text/event-stream`).
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/realtime/channels:
+    get:
+      tags: [Realtime]
+      summary: List realtime channel names and polling fallbacks (GATE-REALTIME-001).
+      operationId: listRealtimeChannels
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Channel map and HTTP polling fallbacks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /api/v1/realtime/ws:
+    get:
+      tags: [Realtime]
+      summary: WebSocket realtime endpoint (GATE-REALTIME-001).
+      description: >
+        Handshake path proxied to backend-core. Prefer `Authorization: Bearer` through the
+        gateway; backend-core also accepts `access_token` query for direct connections.
+        Same channel semantics as SSE.
+      operationId: subscribeRealtimeWebSocket
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: channel
+          in: query
+          required: false
+          schema:
+            type: string
+            default: yaounde
+        - name: access_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional JWT when connecting without Authorization header (core-direct).
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket).
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/gis/layers:
     get:
       tags: [SIG]
@@ -2579,7 +3640,7 @@ paths:
         `SELECT … FOR UPDATE` on the announcement, insert SeatLock, decrement `remainingSeats`
         (announcement becomes `FULL` at 0), set booking to `PENDING_PAYMENT` with payment TTL
         (`expiresAt`, default 10 minutes). Concurrent confirms cannot over-consume seats; losers
-        get 409 `NO_SEAT_AVAILABLE`. Ride payment itself is CORE-PAY-002.
+        get 409 `NO_SEAT_AVAILABLE`. Ride payment is CORE-PAY-002 (`POST /api/v1/bookings/{id}/pay`).
       operationId: confirmBooking
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3049,44 +4110,120 @@ paths:
   /api/v1/bookings/{id}/pay:
     post:
       tags: [Wallet/Payments]
-      summary: Pay a booking from wallet or mobile money (CORE-PAY-002, future).
+      summary: Pay a booking from the passenger wallet (CORE-PAY-002).
       description: >
-        Placeholder for ride payment debit/credit orchestration after CORE-BOOK-001 has moved the
-        booking to `PENDING_PAYMENT` (seats already locked). Depends on CORE-WALLET-001 ledger
-        primitives; implemented under CORE-PAY-002.
+        Passenger pays a `PENDING_PAYMENT` booking atomically: wallet debit (passenger), wallet
+        credit (transporter minus platform fee), booking status `PAID`, payment transaction
+        `CONFIRMED`, and receipt issuance. Amount is `announcement.priceFcfa * seatsRequested`.
+        Insufficient balance returns `INSUFFICIENT_BALANCE` without mutating the booking.
+        Optional Idempotency-Key returns the existing ride payment when replayed.
       operationId: payBooking
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PaymentRequest'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 180
       responses:
-        '202':
-          $ref: '#/components/responses/Accepted'
+        '200':
+          description: Ride payment confirmed and booking marked PAID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RidePaymentResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          description: Booking not payable (wrong status or payment window expired).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Insufficient wallet balance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/nfc/eligibility:
+    get:
+      tags: [Offline/NFC]
+      summary: Check NFC payment eligibility for the authenticated user (CORE-NFC-001).
+      operationId: getNfcEligibility
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Eligibility snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NfcEligibilityResponse'
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/nfc/tokens:
     post:
       tags: [Offline/NFC]
-      summary: Issue an offline NFC payment token.
+      summary: Issue a signed offline NFC payment token (CORE-NFC-001).
       operationId: issueNfcToken
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PaymentRequest'
+              $ref: '#/components/schemas/NfcTokenIssueRequest'
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
+          description: Token issued with HOLD applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NfcTokenResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '422':
+          description: Insufficient available balance or ceiling exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/nfc/tokens/{id}:
+    get:
+      tags: [Offline/NFC]
+      summary: Get NFC token status (CORE-NFC-001).
+      operationId: getNfcToken
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Token detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NfcTokenResponse'
+        '404':
+          $ref: '#/components/responses/Error'
   /api/v1/offline/sync:
     post:
       tags: [Offline/NFC]
-      summary: Synchronize queued offline operations.
+      summary: Synchronize queued offline operations (CORE-OFFLINE-001).
       operationId: syncOfflineOperations
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3095,24 +4232,129 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/OfflineSyncRequest'
       responses:
         '202':
-          $ref: '#/components/responses/Accepted'
-  /api/v1/trips/active:
+          description: Batch processed (may be partial).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineSyncResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/offline/operations:
     get:
-      tags: [Trips]
-      summary: Get the active trip for the current user.
-      operationId: getActiveTrip
+      tags: [Offline/NFC]
+      summary: List offline operations for the authenticated user (CORE-OFFLINE-001).
+      operationId: listOfflineOperations
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [QUEUED, SYNCING, SYNCED, CONFLICT, FAILED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Offline operations page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineOperationPageResponse'
+  /api/v1/offline/map-areas:
+    get:
+      tags: [Offline/NFC]
+      summary: Catalogue of downloadable map packs (CORE-OFFLINE-001).
+      operationId: listOfflineMapAreas
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Map area catalogue.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OfflineMapAreaResponse'
+  /api/v1/trips/active:
+    get:
+      tags: [Trips]
+      summary: List active trips for the current profile (CORE-TRACK-001).
+      description: >
+        Returns trips in CONFIRMED, APPROACHING or ON_BOARD for the active profile
+        (passenger, driver, transporter or announcement publisher).
+      operationId: getActiveTrips
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Active trips for the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveTripsResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Missing or inactive profile (`ACTIVE_PROFILE_REQUIRED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/trips/{id}:
+    get:
+      tags: [Trips, Realtime]
+      summary: Get a trip by id (CORE-TRACK-001 / GATE-REALTIME-001 polling fallback).
+      description: >
+        Authorized for passenger, driver, transporter or announcement publisher.
+        Includes last known driver position when `driverProfileId` is set.
+        Use as HTTP polling fallback when realtime SSE/WebSocket is unavailable.
+      operationId: getTrip
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Trip detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not a trip participant (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/trips/{id}/status:
     patch:
       tags: [Trips]
-      summary: Update trip status.
+      summary: Update trip status (CORE-TRACK-001).
+      description: >
+        Driver/transporter/publisher only. Validates FSM transitions, inserts a trip_event,
+        notifies participants (`STATUS_CHANGE`) and publishes realtime `trip.status.updated`.
       operationId: updateTripStatus
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3122,25 +4364,146 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/UpdateTripStatusRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Trip updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not allowed to mutate (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Invalid transition (`INVALID_TRIP_TRANSITION`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/trips/{id}/complete:
     post:
       tags: [Trips]
-      summary: Complete a trip.
+      summary: Complete a trip (CORE-TRACK-001).
+      description: Transitions to COMPLETED when allowed (typically from ON_BOARD).
       operationId: completeTrip
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Trip completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not allowed to mutate (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Not completable (`TRIP_NOT_COMPLETABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/trips/history:
+    get:
+      tags: [Trips]
+      summary: Trip / booking history with filters (CORE-POST-001).
+      operationId: getTripHistory
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: tab
+          in: query
+          schema:
+            type: string
+            enum: [PAST, UPCOMING, CANCELLED]
+            default: PAST
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: paymentStatus
+          in: query
+          schema:
+            type: string
+        - name: tripType
+          in: query
+          schema:
+            type: string
+            enum: [URBAN, INTERCITY]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: History page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripHistoryPageResponse'
   /api/v1/trips/{id}/ratings:
+    get:
+      tags: [Trips]
+      summary: Get ratings submitted by the caller for a trip (CORE-POST-001).
+      operationId: getTripRatings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Ratings for the trip by the caller.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RatingResponse'
     post:
       tags: [Trips]
-      summary: Rate a completed trip.
+      summary: Rate a completed trip (CORE-POST-001).
       operationId: rateTrip
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3150,30 +4513,140 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/RatingRequest'
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
-  /api/v1/trips/{id}/events:
+          description: Rating created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingResponse'
+        '403':
+          description: Not a participant or trip not completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Rating already submitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/receipts:
     get:
-      tags: [Realtime]
-      summary: Subscribe to trip events as server-sent events.
-      description: Represents Subscribe trip.{tripId} from the sequence diagrams.
-      operationId: subscribeTripEvents
+      tags: [Payments]
+      summary: List receipts for the authenticated user (CORE-POST-001).
+      operationId: listReceipts
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Receipts page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptPageResponse'
+  /api/v1/receipts/{id}:
+    get:
+      tags: [Payments]
+      summary: Get a receipt by id (CORE-POST-001).
+      operationId: getReceipt
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
       responses:
         '200':
-          description: Event stream for the trip.
+          description: Receipt detail.
           content:
-            text/event-stream:
+            application/json:
               schema:
-                $ref: '#/components/schemas/ServerSentEvent'
+                $ref: '#/components/schemas/ReceiptResponse'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/trips/{id}/events:
+    get:
+      tags: [Trips, Realtime]
+      summary: List trip status events for polling fallback (CORE-TRACK-001 / GATE-REALTIME-001).
+      description: >
+        Returns timestamped trip_events for the trip. Prefer realtime channel `trip` or
+        `trip:{uuid}` (`trip.status.updated`) when available; this endpoint is the HTTP
+        polling fallback for degraded networks.
+      operationId: listTripEvents
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Chronological trip events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TripEventResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Not a trip participant (`TRIP_FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Trip not found (`TRIP_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/support/tickets:
+    get:
+      tags: [Support]
+      summary: List support tickets for the authenticated user (CORE-POST-001).
+      operationId: listSupportTickets
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, IN_PROGRESS, WAITING_USER, RESOLVED, CLOSED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Tickets page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketPageResponse'
     post:
       tags: [Support]
-      summary: Create a support ticket.
+      summary: Create a support ticket (CORE-POST-001).
       operationId: createSupportTicket
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3182,10 +4655,31 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/SupportTicketCreateRequest'
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
+          description: Ticket created with acknowledgement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketResponse'
+  /api/v1/support/tickets/{id}:
+    get:
+      tags: [Support]
+      summary: Get a support ticket owned by the caller (CORE-POST-001).
+      operationId: getSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Ticket detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketResponse'
+        '404':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kyc/pending:
     get:
       tags: [Admin, KYC]
@@ -3294,17 +4788,41 @@ paths:
   /api/v1/admin/moderation/queue:
     get:
       tags: [Admin]
-      summary: List moderation queue entries.
+      summary: List moderation queue entries (CORE-POST-001 / ADMIN-MOD-001).
       operationId: listModerationQueue
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [RATING, TICKET]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Moderation queue page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationQueuePageResponse'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/moderation/actions:
     post:
       tags: [Admin]
-      summary: Apply a moderation action.
+      summary: Apply a moderation action (ADMIN-MOD-001).
       operationId: createModerationAction
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -3313,15 +4831,129 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenericObject'
+              $ref: '#/components/schemas/ModerationActionRequest'
       responses:
         '201':
-          $ref: '#/components/responses/Accepted'
+          description: Action recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationActionResponse'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/admin/support/tickets:
+    get:
+      tags: [Admin, Support]
+      summary: List all support tickets for moderation (ADMIN-MOD-001).
+      operationId: adminListSupportTickets
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [TRANSPORT, PAYMENT, ACCOUNT, SECURITY, EMERGENCY]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH, URGENT]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, IN_PROGRESS, WAITING_USER, RESOLVED, CLOSED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Admin tickets page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketPageResponse'
+  /api/v1/admin/support/tickets/{id}:
+    get:
+      tags: [Admin, Support]
+      summary: Get support ticket detail for admin (ADMIN-MOD-001).
+      operationId: adminGetSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Ticket with messages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetailResponse'
+    patch:
+      tags: [Admin, Support]
+      summary: Update support ticket status and/or reply (ADMIN-MOD-001).
+      operationId: adminPatchSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSupportTicketUpdateRequest'
+      responses:
+        '200':
+          description: Updated ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetailResponse'
   /api/v1/admin/ops/overview:
     get:
       tags: [Admin]
-      summary: Get operations overview.
+      summary: Get operations overview (ADMIN-OPS-001 implemented).
       operationId: getOperationsOverview
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/users:
+    get:
+      tags: [Admin]
+      summary: List users for operations (ADMIN-OPS-001 implemented).
+      operationId: listOperationalUsers
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/users/{id}:
+    get:
+      tags: [Admin]
+      summary: Get user detail with profiles (ADMIN-OPS-001 implemented).
+      operationId: getOperationalUser
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/announcements:
+    get:
+      tags: [Admin]
+      summary: List announcements for operations (ADMIN-OPS-001 implemented).
+      operationId: listOperationalAnnouncements
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -3330,8 +4962,21 @@ paths:
   /api/v1/admin/ops/bookings:
     get:
       tags: [Admin]
-      summary: Search operational bookings.
+      summary: Search operational bookings (ADMIN-OPS-001 implemented).
       operationId: searchOperationalBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Accepted'
+  /api/v1/admin/ops/payments:
+    get:
+      tags: [Admin]
+      summary: List payments for operations (ADMIN-OPS-001 implemented).
+      description: >
+        Operational payment list. Detailed reconciliation remains available at
+        `/api/v1/admin/payments/transactions`.
+      operationId: listOperationalPayments
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -3407,23 +5052,172 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+  /api/v1/agency/overview:
+    get:
+      tags: [Agency]
+      summary: Get agency overview for the active AGENCY profile (ADMIN-AGENCY-001).
+      operationId: getAgencyOverview
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period start (Africa/Douala). Defaults to first day of current month.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period end inclusive (Africa/Douala). Defaults to today.
+      responses:
+        '200':
+          description: Agency overview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgencyOverview'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/agency/announcements:
+    get:
+      tags: [Agency]
+      summary: List announcements owned by the active agency profile.
+      operationId: listAgencyAnnouncements
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated agency announcements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgencyAnnouncementPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/agency/bookings:
+    get:
+      tags: [Agency]
+      summary: List bookings for announcements owned by the active agency profile.
+      operationId: listAgencyBookings
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated agency bookings (passenger phones masked).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgencyBookingPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kpi:
     get:
       tags: [Admin]
-      summary: Get platform KPI snapshots.
+      summary: Get aggregated platform KPI for a period (CORE-ANALYTICS-001).
       operationId: getKpiSnapshots
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period start (Africa/Douala). Defaults to first day of current month.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Period end inclusive (Africa/Douala). Defaults to today.
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [7d, 30d, month]
+          description: Optional preset that overrides from/to.
       responses:
         '200':
-          $ref: '#/components/responses/Accepted'
+          description: Aggregated KPI snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KpiSnapshot'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /api/v1/admin/kpi/export.csv:
     get:
       tags: [Admin]
-      summary: Export KPI snapshots as CSV.
+      summary: Export KPI snapshot as CSV (aligned with visible aggregates).
       operationId: exportKpiCsv
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [7d, 30d, month]
       responses:
         '200':
           description: CSV export.
@@ -3431,6 +5225,10 @@ paths:
             text/csv:
               schema:
                 type: string
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /actuator/health:
     get:
       tags: [Health]
