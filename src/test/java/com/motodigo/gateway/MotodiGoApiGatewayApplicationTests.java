@@ -385,6 +385,30 @@ class MotodiGoApiGatewayApplicationTests {
 	}
 
 	@Test
+	void guestRoutePreviewIsForwardedWithoutJwt() throws Exception {
+		var response = this.restTemplate.postForEntity(
+				url("/api/v1/urban/route/preview"),
+				HttpEntity.EMPTY,
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+		CapturedRequest request = CAPTURED_REQUESTS.poll(2, TimeUnit.SECONDS);
+		assertThat(request).isNotNull();
+		assertThat(request.path()).isEqualTo("/api/v1/urban/route/preview");
+	}
+
+	@Test
+	void routeAlternativesStillRequireJwt() {
+		var response = this.restTemplate.postForEntity(
+				url("/api/v1/urban/route/alternatives"),
+				HttpEntity.EMPTY,
+				String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(response.getBody()).contains("\"errorCode\":\"AUTH_REQUIRED\"");
+	}
+
+	@Test
 	void profileActivationIsRoutedWithAuthenticatedJwtEvenBeforeProfileSwitchPermission() throws Exception {
 		UUID profileId = UUID.randomUUID();
 

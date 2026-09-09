@@ -2177,6 +2177,7 @@ paths:
       tags: [SIG]
       summary: List popular Yaoundé neighborhoods (seed).
       operationId: listPopularUrbanPlaces
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -2188,13 +2189,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/UrbanPlaceResponse'
-        '401':
-          $ref: '#/components/responses/Error'
   /api/v1/urban/places/suggest:
     get:
       tags: [SIG]
       summary: Search-as-you-type merging MotodiGo places with Photon OSM results.
       operationId: suggestUrbanPlaces
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - name: q
@@ -2230,13 +2230,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/UrbanPlaceResponse'
-        '401':
-          $ref: '#/components/responses/Error'
   /api/v1/urban/geocode:
     get:
       tags: [SIG]
       summary: Prefix/fuzzy geocode against the Yaoundé place seed.
       operationId: geocodeUrbanPlace
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - name: q
@@ -2272,13 +2271,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/UrbanPlaceResponse'
-        '401':
-          $ref: '#/components/responses/Error'
   /api/v1/urban/reverse:
     get:
       tags: [SIG]
       summary: Reverse-geocode to the nearest Yaoundé seed place.
       operationId: reverseGeocodeUrbanPlace
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - name: lat
@@ -2300,8 +2298,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UrbanPlaceResponse'
-        '401':
-          $ref: '#/components/responses/Error'
         '422':
           $ref: '#/components/responses/Error'
   /api/v1/urban/route/preview:
@@ -2309,6 +2305,7 @@ paths:
       tags: [SIG]
       summary: Preview a road itinerary via Valhalla with MotodiGo traffic overlay fallback.
       operationId: previewUrbanRoute
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
       requestBody:
@@ -2411,6 +2408,7 @@ paths:
         Only PUBLISHED/FULL announcements from VALIDATED publishers are returned.
         When no row matches, wideningSuggestions proposes deterministic relaxations.
       operationId: searchIntercityAnnouncements
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - name: departureCity
@@ -2557,8 +2555,10 @@ paths:
       tags: [Intercity]
       summary: Get an intercity announcement by id.
       description: >
-        Owners see any status. Other authenticated users only see PUBLISHED or FULL announcements.
+        Public for PUBLISHED/FULL announcements (guest browse).
+        Owners see any status when authenticated.
       operationId: getIntercityAnnouncement
+      security: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Id'
@@ -2569,8 +2569,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IntercityAnnouncementResponse'
-        '401':
-          $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
     patch:

@@ -82,19 +82,23 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.PUT, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
 						.requestMatchers(HttpMethod.GET, "/api/v1/drivers/position").hasAuthority("MOTOTAXI_SHARE_POSITION")
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/drivers/availability").hasAuthority("MOTOTAXI_SET_AVAILABILITY")
-						// Place lookup is shared (passenger search + publisher annonces + zone mototaxi).
+						// Public place lookup for guest browse (map + city autocomplete).
 						.requestMatchers(HttpMethod.GET, "/api/v1/urban/places/popular",
 								"/api/v1/urban/places/suggest",
 								"/api/v1/urban/geocode",
-								"/api/v1/urban/reverse").authenticated()
+								"/api/v1/urban/reverse").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/urban/drivers/nearby").hasAuthority("PASSENGER_SEARCH_RIDE")
-						.requestMatchers(HttpMethod.POST, "/api/v1/urban/route/preview",
-								"/api/v1/urban/route/alternatives",
+						// Public road preview for guest trip-detail maps. Matching stays authenticated.
+						.requestMatchers(HttpMethod.POST, "/api/v1/urban/route/preview").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/urban/route/alternatives",
 								"/api/v1/urban/route/match").hasAuthority("PASSENGER_SEARCH_RIDE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/gis/layers").authenticated()
 						.requestMatchers("/api/v1/realtime/**").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
 						.requestMatchers(HttpMethod.GET, "/api/v1/intercity/announcements/mine").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
+						// Public announcement browse for guest mode (booking stays authenticated).
+						.requestMatchers(HttpMethod.GET, "/api/v1/intercity/announcements",
+								"/api/v1/intercity/announcements/*").permitAll()
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/intercity/announcements/*").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/close").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
 						.requestMatchers(HttpMethod.POST, "/api/v1/intercity/announcements/*/cancel").hasAuthority("INTERCITY_ANNOUNCEMENT_WRITE")
